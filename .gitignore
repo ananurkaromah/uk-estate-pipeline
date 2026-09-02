@@ -1,0 +1,19 @@
+# Secrets
+.env
+
+# dbt
+dbt/target/
+dbt/dbt_packages/
+
+# Python
+__pycache__/
+*.pyc
+
+# Apache Airflow
+airflow.db
+airflow.cfg
+airflow/logs/
+airflow/webserver_config.py
+
+# IDE
+.vscode/*
