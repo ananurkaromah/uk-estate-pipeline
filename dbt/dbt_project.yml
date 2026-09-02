@@ -1,0 +1,18 @@
+name: 'uk_property_pipeline'
+version: '1.0.0'
+config-version: 2
+
+profile: 'uk_property_pipeline'
+
+model-paths: ["models"]
+target-path: "target"
+clean-targets: ["target", "dbt_packages"]
+
+models:
+  uk_property_pipeline:
+    staging:
+      +materialized: view
+      +schema: silver
+    marts:
+      +materialized: table
+      +schema: gold

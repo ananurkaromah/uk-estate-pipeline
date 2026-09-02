@@ -1,0 +1,16 @@
+version: 2
+
+models:
+  - name: fct_property_prices
+    description: One row per property transaction, enriched with region (gold).
+    columns:
+      - name: transaction_id
+        tests: [unique, not_null]
+      - name: price
+        tests: [not_null]
+
+  - name: dim_region
+    description: Distinct regions/admin districts for dashboard filters (gold).
+    columns:
+      - name: region
+        tests: [not_null]

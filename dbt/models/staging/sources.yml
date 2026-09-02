@@ -1,0 +1,45 @@
+version: 2
+
+sources:
+  - name: bronze
+    schema: bronze
+    tables:
+      - name: land_registry_pp
+      - name: postcode_io
+      - name: ons_postcode
+
+models:
+  - name: stg_land_registry
+    description: Cleaned, deduplicated Land Registry property transactions (silver).
+    columns:
+      - name: transaction_id
+        tests: [unique, not_null]
+      - name: price
+        tests: [not_null]
+      - name: postcode
+        tests: [not_null]
+
+  - name: stg_postcode_io
+    description: Postcode -> lat/long/region from postcodes.io (silver).
+    columns:
+      - name: postcode
+        tests: [unique, not_null]
+
+  - name: stg_ons_postcode
+    description: Postcode -> lat/long/region from the ONS Postcode Directory / NSPL (silver).
+    columns:
+      - name: postcode
+        tests: [unique, not_null]
+
+  - name: stg_postcode_master
+    description: >
+      Reconciled postcode lookup combining ONS (preferred, authoritative) and
+      postcodes.io (fallback for postcodes ONS doesn't resolve). Downstream
+      marts should join against this model, not the two sources directly.
+    columns:
+      - name: postcode
+        tests: [unique, not_null]
+      - name: source
+        tests:
+          - accepted_values:
+              values: ["ons", "postcodes_io"]

@@ -1,0 +1,12 @@
+uk_property_pipeline:
+  target: dev
+  outputs:
+    dev:
+      type: postgres
+      host: "{{ env_var('DW_HOST', 'postgres') }}"
+      port: "{{ env_var('DW_PORT', '5432') | as_number }}"
+      user: "{{ env_var('POSTGRES_USER', 'estate') }}"
+      password: "{{ env_var('POSTGRES_PASSWORD', 'estate') }}"
+      dbname: "{{ env_var('POSTGRES_DB', 'estate') }}"
+      schema: bronze
+      threads: 4
