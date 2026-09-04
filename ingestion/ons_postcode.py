@@ -1,9 +1,12 @@
 """Ingest the ONS Postcode Directory (NSPL) into bronze.ons_postcode.
 
 The NSPL is published by ONS Geography via the Open Geography Portal as a
-bulk CSV/zip export. The exact download URL changes between releases, so
-set NSPL_SOURCE_URL to the current direct CSV link before running this
-(e.g. from https://geoportal.statistics.gov.uk -> search "NSPL").
+**zip archive** containing one or more CSV files (not a raw CSV response).
+The exact download URL changes between releases and isn't a fixed link --
+set NSPL_SOURCE_URL to the current download link before running this. The
+Open Geography Portal (https://geoportal.statistics.gov.uk) doesn't expose
+a permanent URL: open the current NSPL dataset page, click "Download", and
+copy the resulting file link.
 
 This is used alongside postcodes.io (see postcodes.py) as a second,
 authoritative source for postcode -> region/LSOA/MSOA lookups; the dbt
@@ -11,7 +14,8 @@ layer reconciles the two (see models/staging/stg_postcode_master.sql).
 """
 import logging
 import os
-from io import StringIO
+import zipfile
+from io import BytesIO
 
 import pandas as pd
 import requests
@@ -61,7 +65,23 @@ def run():
     resp = requests.get(NSPL_SOURCE_URL, timeout=300)
     resp.raise_for_status()
 
-    df = pd.read_csv(StringIO(resp.text), low_memory=False)
+    with zipfile.ZipFile(BytesIO(resp.content)) as archive:
+        # NSPL zips nest the data CSV under a "Data/" folder alongside
+        # documentation/user guide files -- find it rather than assume a name.
+        csv_names = [
+            n for n in archive.namelist()
+            if n.lower().endswith(".csv") and "/data/" in n.lower()
+        ]
+        if not csv_names:
+            csv_names = [n for n in archive.namelist() if n.lower().endswith(".csv")]
+        if not csv_names:
+            raise ValueError(f"No CSV found in NSPL zip. Contents: {archive.namelist()}")
+
+        csv_name = csv_names[0]
+        logger.info("Extracting %s from NSPL zip", csv_name)
+        with archive.open(csv_name) as f:
+            df = pd.read_csv(f, low_memory=False)
+
     df = df.rename(columns=COLUMN_MAP)
 
     missing = [c for c in BRONZE_COLUMNS if c not in df.columns]
