@@ -93,7 +93,7 @@ services:
 
   # Metabase (BI tool)
   metabase:
-    image: metabase/metabase:v0.50.0
+    image: metabase/metabase:latest
     environment:
       MB_DB_TYPE: postgres
       MB_DB_DBNAME: metabase
