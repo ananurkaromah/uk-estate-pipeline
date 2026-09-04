@@ -109,6 +109,21 @@ answer:
 
 <br>
 
+- **Sources**: HM Land Registry Price Paid Data (CSV), postcodes.io (REST API/JSON), ONS Postcode Directory/NSPL (CSV in zip)
+- **Orchestration**: Apache Airflow schedules and coordinates the ingestion and transformation tasks
+- **Extract & Load**: raw data lands as-is in the bronze schema of a single PostgreSQL instance (bronze.land_registry_pp, bronze.postcode_io, bronze.ons_postcode)
+- **Transform**: dbt-core reads from bronze and builds:
+  - silver — cleaned staging models (stg_land_registry, stg_postcode_io, stg_ons_postcode, stg_postcode_master)
+  - gold — analytics-ready marts (gold.fct_property_prices, gold.dim_region)
+- **Single warehouse**: bronze, silver, and gold are all schemas within the same Postgres instance — not separate databases
+- **Metadata isolation**: Airflow's own scheduling/run history is stored in a separate airflow-db instance, kept apart from the data warehouse
+- **Serving**: Metabase connects to the gold schema for BI dashboards and reporting
+- **Infrastructure**: every component — Airflow, Postgres, dbt, Metabase — runs as a containerized service in a single Docker Compose stack
+- **Result**: a fully reproducible, on-premise, zero-cost data platform following an Extract → Load → Transform → Serve flow
+ 
+ <br>
+
+
 ## Modern Data Stack
 
 | Layer | Tool | Why |
