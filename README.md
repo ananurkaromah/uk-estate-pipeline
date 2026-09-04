@@ -103,26 +103,11 @@ answer:
 - Does property type (detached, terraced, flat, etc.) affect price trends differently across regions?
 - How reliable is postcode-based geographic enrichment when two independent sources (ONS vs. postcodes.io) are compared, and how often do they disagree?
 
-## Pipeline Architecture & Data Lineage
+## Pipeline Architecture
 
 ![e:\00_DATA_ENGINEERING\10.project-note\uk-property-pipeline\workflow-image.PNG](workflow-image.PNG)
 
 <br>
-**Lineage detail for the postcode dimension**, since it's the most
-interesting transformation in the project:
-
-`bronze.ons_postcode` → `stg_ons_postcode` ─┐
-`bronze.postcode_io` → `stg_postcode_io` ───┼─► `stg_postcode_master`
-                                             │   (full outer join, ONS preferred,
-                                             │    postcodes.io as fallback)
-                                             ▼
-                                   `fct_property_prices`, `dim_region`
-
-The DAG (`uk_property_pipeline`) executes: `ingest_land_registry` →
-`enrich_postcodes` (needs distinct postcodes from Land Registry), in
-parallel with `ingest_ons_postcode` → both feed into `dbt_run` → `dbt_test`
-as a data quality gate before the gold layer is considered ready for
-Metabase.
 
 ## Modern Data Stack
 
