@@ -56,16 +56,19 @@ with DAG(
     )
 
     # --- Silver + Gold: dbt transformations ---
+    # --target-path/--log-path point at /tmp (always writable inside the
+    # container) instead of the bind-mounted ./dbt folder, which the
+    # container's airflow user doesn't have write permission on.
     dbt_run = BashOperator(
         task_id="dbt_run",
-        bash_command=f"cd {DBT_DIR} && dbt run --profiles-dir {DBT_DIR}",
+        bash_command=f"cd {DBT_DIR} && dbt run --profiles-dir {DBT_DIR} --target-path /tmp/dbt_target --log-path /tmp/dbt_logs",
     )
 
     # --- Data quality gate: pipeline stops here if tests fail, so a broken
     # gold layer never reaches Metabase ---
     dbt_test = BashOperator(
         task_id="dbt_test",
-        bash_command=f"cd {DBT_DIR} && dbt test --profiles-dir {DBT_DIR}",
+        bash_command=f"cd {DBT_DIR} && dbt test --profiles-dir {DBT_DIR} --target-path /tmp/dbt_target --log-path /tmp/dbt_logs",
     )
 
     ingest_land_registry >> enrich_postcodes

@@ -105,7 +105,7 @@ answer:
 
 ## Pipeline Architecture
 
-![e:\00_DATA_ENGINEERING\10.project-note\uk-property-pipeline\workflow-image.PNG](workflow-image.PNG)
+![Pipeline architecture](workflow-image.PNG)
 
 <br>
 
@@ -120,18 +120,17 @@ answer:
 - **Serving**: Metabase connects to the gold schema for BI dashboards and reporting
 - **Infrastructure**: every component — Airflow, Postgres, dbt, Metabase — runs as a containerized service in a single Docker Compose stack
 - **Result**: a fully reproducible, on-premise, zero-cost data platform following an Extract → Load → Transform → Serve flow
- 
- <br>
 
+<br>
 
 ## Modern Data Stack
 
 | Layer | Tool | Why |
 |---|---|---|
-| Orchestration | Apache Airflow 2.9.1 (LocalExecutor) | Industry-standard scheduler; DAG-based dependency management |
-| Containerization | Docker Compose | Reproducible, one-command local environment |
+| Orchestration | Apache Airflow 2.9.3 (Docker, LocalExecutor) | Industry-standard scheduler; DAG-based dependency management |
+| Containerization | Docker Compose (custom-built Airflow image via `Dockerfile.airflow`) | Reproducible, one-command local environment |
 | Storage / warehouse | PostgreSQL 16 | Free, robust, supports schema-based medallion separation |
-| Transformation | dbt-core (dbt-postgres) | Transformation-as-code, testable, version-controlled SQL |
+| Transformation | dbt-core 1.8.2 (dbt-postgres) | Transformation-as-code, testable, version-controlled SQL |
 | Data quality | dbt tests + dbt_utils | Declarative `unique`/`not_null`/`accepted_values` checks as a pipeline gate |
 | BI / serving | Metabase | Free, self-hosted, connects directly to the gold schema |
 | CI | (planned — see Future Work) | Automated `dbt test` on every push |
@@ -153,9 +152,9 @@ uk-property-pipeline/
 │       └── property_pipeline_dag.py
 ├── ingestion/
 │   ├── db.py                        # shared Postgres connection helper
-│   ├── land_registry.py             # -> bronze.land_registry_pp
+│   ├── land_registry.py             # -> bronze.land_registry_pp (streamed + chunked)
 │   ├── postcodes.py                 # -> bronze.postcode_io
-│   └── ons_postcode.py              # -> bronze.ons_postcode
+│   └── ons_postcode.py              # -> bronze.ons_postcode (streamed + chunked)
 └── dbt/
     ├── dbt_project.yml
     ├── profiles.yml
@@ -185,9 +184,15 @@ Fill in `.env`:
 - `POSTGRES_USER`, `POSTGRES_PASSWORD`, `POSTGRES_DB` — warehouse credentials
 - `AIRFLOW__CORE__FERNET_KEY` — generate with:
   `python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"`
-- `NSPL_SOURCE_URL` — current NSPL CSV download link from the
+- `AIRFLOW__WEBSERVER__SECRET_KEY` — generate with:
+  `python3 -c "import secrets; print(secrets.token_hex(16))"`
+  (keeps the Airflow webserver's session cookie signing consistent across
+  webserver/scheduler containers; without it, log-fetching in the UI can
+  fail with a 403)
+- `NSPL_SOURCE_URL` — current NSPL download link from the
   [ONS Open Geography Portal](https://geoportal.statistics.gov.uk) (this
-  link changes between ONS releases and has no permanent URL)
+  link changes between ONS releases, has no permanent URL, and points to
+  a `.zip`, not a raw CSV — see `ingestion/ons_postcode.py`)
 
 Build and start everything:
 
@@ -201,6 +206,33 @@ docker compose up -d --build
   dashboards against the `gold` schema only
 - Trigger the `uk_property_pipeline` DAG from the Airflow UI to run the
   full ingestion → transform → test flow
+
+### Troubleshooting notes (from actual deployment)
+
+A few real issues surfaced while first standing this project up locally —
+documented here since they're the kind of thing worth being able to
+explain in an interview:
+
+- **`dbt-postgres` version pinning**: the adapter and `dbt-core` aren't
+  always released in lockstep — pin only `dbt-postgres` in
+  `requirements.txt` and let it pull in a compatible `dbt-core`, rather
+  than pinning both to the same version number.
+- **`pandas` vs `SQLAlchemy` version conflict**: `pandas>=2.2` requires
+  `SQLAlchemy>=2.0`, but `dbt-core`/`dbt-postgres` 1.8.x require
+  `SQLAlchemy<2.0` — these are mutually exclusive. Fix: pin
+  `pandas==2.1.4` (last release compatible with SQLAlchemy 1.4.x) and
+  `SQLAlchemy==1.4.51` explicitly, rather than leaving either
+  unconstrained.
+- **dbt log/target directory permissions**: dbt defaults to writing
+  `target/` and `logs/` inside the bind-mounted `dbt/` folder, which the
+  container's `airflow` user may not have write access to on the host.
+  Fixed by passing `--target-path /tmp/dbt_target --log-path /tmp/dbt_logs`
+  to `dbt run`/`dbt test` in the DAG, redirecting both to a
+  container-writable location.
+- **Port 5432 already in use**: usually a native (non-Docker) PostgreSQL
+  service already running on the host. Check with
+  `sudo lsof -i :5432` / `sudo ss -tulpn | grep 5432` and stop it, or
+  remap the host side of the `postgres` service's port mapping instead.
 
 ## Future Work & Scalability
 
