@@ -1,34 +1,23 @@
-"""Ingest the ONS Postcode Directory (NSPL) into bronze.ons_postcode.
+'''
+Ingest the ONS Postcode Directory (NSPL) into bronze.ons_postcode.
+Downloaded to a temp file and loaded in chunks.
+'''
 
-The NSPL is published by ONS Geography via the Open Geography Portal as a
-**zip archive** containing one or more CSV files (not a raw CSV response).
-The exact download URL changes between releases and isn't a fixed link --
-set NSPL_SOURCE_URL to the current download link before running this. The
-Open Geography Portal (https://geoportal.statistics.gov.uk) doesn't expose
-a permanent URL: open the current NSPL dataset page, click "Download", and
-copy the resulting file link.
-
-This is used alongside postcodes.io (see postcodes.py) as a second,
-authoritative source for postcode -> region/LSOA/MSOA lookups; the dbt
-layer reconciles the two (see models/staging/stg_postcode_master.sql).
-"""
 import logging
 import os
+import tempfile
 import zipfile
-from io import BytesIO
 
 import pandas as pd
 import requests
 
-from db import load_dataframe
+from db import ensure_schema, get_engine
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 NSPL_SOURCE_URL = os.environ.get("NSPL_SOURCE_URL", "")
 
-# Mapping from the raw NSPL column names to bronze.ons_postcode columns.
-# NSPL exports commonly use these short codes; adjust if ONS changes them.
 COLUMN_MAP = {
     "pcds": "postcode",
     "doterm": "status",
@@ -51,49 +40,73 @@ COLUMN_MAP = {
 }
 
 BRONZE_COLUMNS = list(COLUMN_MAP.values())
+SCHEMA = "bronze"
+TABLE_NAME = "ons_postcode"
+CHUNK_SIZE = 50_000
 
 
 def run():
     if not NSPL_SOURCE_URL:
         raise ValueError(
-            "NSPL_SOURCE_URL is not set. Get the current NSPL CSV download "
-            "link from https://geoportal.statistics.gov.uk and set it as an "
+            "NSPL_SOURCE_URL is not set. Get the current NSPL download link "
+            "from https://geoportal.statistics.gov.uk and set it as an "
             "environment variable before running this task."
         )
 
+    engine = get_engine()
+    ensure_schema(engine, SCHEMA)
+
     logger.info("Downloading ONS Postcode Directory from %s", NSPL_SOURCE_URL)
-    resp = requests.get(NSPL_SOURCE_URL, timeout=300)
-    resp.raise_for_status()
+    total_rows = 0
+    first_chunk = True
 
-    with zipfile.ZipFile(BytesIO(resp.content)) as archive:
-        # NSPL zips nest the data CSV under a "Data/" folder alongside
-        # documentation/user guide files -- find it rather than assume a name.
-        csv_names = [
-            n for n in archive.namelist()
-            if n.lower().endswith(".csv") and "/data/" in n.lower()
-        ]
-        if not csv_names:
-            csv_names = [n for n in archive.namelist() if n.lower().endswith(".csv")]
-        if not csv_names:
-            raise ValueError(f"No CSV found in NSPL zip. Contents: {archive.namelist()}")
+    with requests.get(NSPL_SOURCE_URL, stream=True, timeout=300) as resp:
+        resp.raise_for_status()
+        with tempfile.NamedTemporaryFile(suffix=".zip") as tmp:
+            for block in resp.iter_content(chunk_size=1024 * 1024):
+                tmp.write(block)
+            tmp.flush()
 
-        csv_name = csv_names[0]
-        logger.info("Extracting %s from NSPL zip", csv_name)
-        with archive.open(csv_name) as f:
-            df = pd.read_csv(f, low_memory=False)
+            with zipfile.ZipFile(tmp.name) as archive:
+                csv_names = [
+                    n for n in archive.namelist()
+                    if n.lower().endswith(".csv") and "/data/" in n.lower()
+                ]
+                if not csv_names:
+                    csv_names = [n for n in archive.namelist() if n.lower().endswith(".csv")]
+                if not csv_names:
+                    raise ValueError(f"No CSV found in NSPL zip. Contents: {archive.namelist()}")
 
-    df = df.rename(columns=COLUMN_MAP)
+                csv_name = csv_names[0]
+                logger.info("Streaming %s from NSPL zip in chunks", csv_name)
 
-    missing = [c for c in BRONZE_COLUMNS if c not in df.columns]
-    if missing:
-        logger.warning("NSPL export missing expected columns: %s", missing)
-    df = df[[c for c in BRONZE_COLUMNS if c in df.columns]]
+                with archive.open(csv_name) as f:
+                    for chunk in pd.read_csv(f, low_memory=False, chunksize=CHUNK_SIZE):
+                        chunk = chunk.rename(columns=COLUMN_MAP)
 
-    before = len(df)
-    df = df.dropna(subset=["postcode"])
-    logger.info("Dropped %d rows missing postcode", before - len(df))
+                        missing = [c for c in BRONZE_COLUMNS if c not in chunk.columns]
+                        if missing and first_chunk:
+                            logger.warning("NSPL export missing expected columns: %s", missing)
+                        chunk = chunk[[c for c in BRONZE_COLUMNS if c in chunk.columns]]
 
-    load_dataframe(df, table_name="ons_postcode", schema="bronze")
+                        before = len(chunk)
+                        chunk = chunk.dropna(subset=["postcode"])
+                        dropped = before - len(chunk)
+                        if dropped:
+                            logger.info("Dropped %d rows missing postcode in this chunk", dropped)
+
+                        chunk.to_sql(
+                            TABLE_NAME,
+                            engine,
+                            schema=SCHEMA,
+                            if_exists="replace" if first_chunk else "append",
+                            index=False,
+                        )
+                        first_chunk = False
+                        total_rows += len(chunk)
+                        logger.info("Loaded chunk (%d rows so far)", total_rows)
+
+    logger.info("Finished loading %d rows into %s.%s", total_rows, SCHEMA, TABLE_NAME)
 
 
 if __name__ == "__main__":

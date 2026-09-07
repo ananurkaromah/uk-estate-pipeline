@@ -66,12 +66,13 @@ services:
 
   airflow-scheduler:
     <<: *airflow-common
-    command: scheduler
     depends_on:
       airflow-db:
         condition: service_healthy
       postgres:
-        condition: service_healthy    
+        condition: service_healthy
+    command: scheduler  
+       
 
   # Estate warehouse (bronze, silver, gold schemas)
   postgres:
