@@ -10,7 +10,14 @@ x-airflow-common: &airflow-common
     AIRFLOW__CORE__FERNET_KEY: "${AIRFLOW__CORE__FERNET_KEY}"
     AIRFLOW__CORE__LOAD_EXAMPLES: "false"
     AIRFLOW__WEBSERVER__EXPOSE_CONFIG: "true"
+    AIRFLOW__WEBSERVER__SECRET_KEY: "some-fixed-string-you-choose"
     AIRFLOW_CONN_ESTATE_POSTGRES: postgresql+psycopg2://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres/${POSTGRES_DB}
+    DW_HOST: postgres
+    DW_PORT: "5432"
+    POSTGRES_USER: "${POSTGRES_USER}"
+    POSTGRES_PASSWORD: "${POSTGRES_PASSWORD}"
+    POSTGRES_DB: "${POSTGRES_DB}"
+    NSPL_SOURCE_URL: "${NSPL_SOURCE_URL}"
     _AIRFLOW_WWW_USER_CREATE: "true"
     _AIRFLOW_WWW_USER_USERNAME: "admin"
     _AIRFLOW_WWW_USER_PASSWORD: "admin"
@@ -18,6 +25,7 @@ x-airflow-common: &airflow-common
     _AIRFLOW_WWW_USER_FIRSTNAME: "Admin"
     _AIRFLOW_WWW_USER_LASTNAME: "User"
     _AIRFLOW_WWW_USER_EMAIL: "admin@estate-pipe.local"
+
   volumes:
     - ./airflow/dags:/opt/airflow/dags
     - ./ingestion:/opt/airflow/ingestion
