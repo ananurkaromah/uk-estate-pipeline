@@ -4,6 +4,7 @@ x-airflow-common: &airflow-common
   build:
     context: .
     dockerfile: Dockerfile.airflow
+  user: "${AIRFLOW_UID:-50000}:0"
   environment:
     AIRFLOW__CORE__EXECUTOR: LocalExecutor
     AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://airflow:airflow@airflow-db/airflow
@@ -25,6 +26,7 @@ x-airflow-common: &airflow-common
     _AIRFLOW_WWW_USER_FIRSTNAME: "Admin"
     _AIRFLOW_WWW_USER_LASTNAME: "User"
     _AIRFLOW_WWW_USER_EMAIL: "admin@estate-pipe.local"
+
 
   volumes:
     - ./airflow/dags:/opt/airflow/dags
@@ -103,13 +105,6 @@ services:
   # Metabase (BI tool)
   metabase:
     image: metabase/metabase:latest
-    environment:
-      MB_DB_TYPE: postgres
-      MB_DB_DBNAME: metabase
-      MB_DB_PORT: 5432
-      MB_DB_USER: ${POSTGRES_USER}
-      MB_DB_PASS: ${POSTGRES_PASSWORD}
-      MB_DB_HOST: postgres
     ports:
       - "3000:3000"
     depends_on:

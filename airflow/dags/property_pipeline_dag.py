@@ -31,7 +31,7 @@ with DAG(
     dag_id="uk_property_pipeline",
     description="Ingest UK property data, transform with dbt, serve via Metabase",
     default_args=default_args,
-    schedule_interval="@monthly",
+    schedule_interval=None,  # set back to "@monthly" once the pipeline is stable
     start_date=datetime(2024, 1, 1),
     catchup=False,
     tags=["property", "portfolio"],
@@ -54,11 +54,13 @@ with DAG(
         task_id="ingest_ons_postcode",
         python_callable=run_ons_postcode,
     )
-
     # --- Silver + Gold: dbt transformations ---
-    # --target-path/--log-path point at /tmp (always writable inside the
-    # container) instead of the bind-mounted ./dbt folder, which the
-    # container's airflow user doesn't have write permission on.
+    # Installs packages.yml dependencies (e.g. dbt_utils) before dbt run,
+    dbt_deps = BashOperator(
+        task_id="dbt_deps",
+        bash_command=f"cd {DBT_DIR} && dbt deps --profiles-dir {DBT_DIR} --log-path /tmp/dbt_logs",
+    )
+    
     dbt_run = BashOperator(
         task_id="dbt_run",
         bash_command=f"cd {DBT_DIR} && dbt run --profiles-dir {DBT_DIR} --target-path /tmp/dbt_target --log-path /tmp/dbt_logs",
@@ -72,4 +74,4 @@ with DAG(
     )
 
     ingest_land_registry >> enrich_postcodes
-    [enrich_postcodes, ingest_ons_postcode] >> dbt_run >> dbt_test
+    [enrich_postcodes, ingest_ons_postcode] >> dbt_deps >> dbt_run >> dbt_test

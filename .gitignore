@@ -4,6 +4,7 @@
 # dbt
 dbt/target/
 dbt/dbt_packages/
+dbt/.user.yml
 
 # Python
 __pycache__/
@@ -14,6 +15,7 @@ airflow.db
 airflow.cfg
 airflow/logs/
 airflow/webserver_config.py
+
 
 # IDE
 .vscode/*

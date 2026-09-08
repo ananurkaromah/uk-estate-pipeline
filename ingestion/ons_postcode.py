@@ -1,8 +1,22 @@
-'''
-Ingest the ONS Postcode Directory (NSPL) into bronze.ons_postcode.
-Downloaded to a temp file and loaded in chunks.
-'''
+"""Ingest the ONS Postcode Directory (NSPL) into bronze.ons_postcode.
 
+The NSPL is published by ONS Geography via the Open Geography Portal as a
+**zip archive** containing one or more CSV files (not a raw CSV response).
+The exact download URL changes between releases and isn't a fixed link --
+set NSPL_SOURCE_URL to the current download link before running this. The
+Open Geography Portal (https://geoportal.statistics.gov.uk) doesn't expose
+a permanent URL: open the current NSPL dataset page, click "Download", and
+copy the resulting file link.
+
+Downloaded to a temp file and loaded in chunks -- the full NSPL is large
+enough that holding the whole zip in memory (BytesIO) plus a full parsed
+DataFrame at once is wasteful, especially in a memory-constrained
+environment (e.g. WSL2 with a capped .wslconfig memory setting).
+
+This is used alongside postcodes.io (see postcodes.py) as a second,
+authoritative source for postcode -> region/LSOA/MSOA lookups; the dbt
+layer reconciles the two (see models/staging/stg_postcode_master.sql).
+"""
 import logging
 import os
 import tempfile
@@ -18,25 +32,25 @@ logger = logging.getLogger(__name__)
 
 NSPL_SOURCE_URL = os.environ.get("NSPL_SOURCE_URL", "")
 
+# Confirmed against the actual downloaded file's header (August 2026 NSPL
+# release) -- NSPL column suffixes change with each release (e.g. "lad26cd"
+# vs older "laua"), and critically NSPL only provides CODES, never
+# human-readable names, for region/local authority -- there is no
+# "region_name"/"lad_name" source column in any NSPL release.
 COLUMN_MAP = {
     "pcds": "postcode",
-    "doterm": "status",
-    "usertype": "user_type",
-    "oseast1m": "easting",
-    "osnrth1m": "northing",
-    "osgrdind": "positional_quality",
-    "ctry": "country",
+    "doterm": "status",           # termination date (YYYYMM), blank if still live
+    "usrtypind": "user_type",
+    "east1m": "easting",
+    "north1m": "northing",
+    "gridind": "positional_quality",
+    "ctry26cd": "country",
     "lat": "latitude",
     "long": "longitude",
-    "pcon": "postcode_area",
-    "oslaua": "postcode_district",
-    "osward": "postcode_sector",
-    "lsoa11": "lsoa_code",
-    "msoa11": "msoa_code",
-    "laua": "lad_code",
-    "ladnm": "lad_name",
-    "rgn": "region_code",
-    "rgn_name": "region_name",
+    "rgn26cd": "region_code",
+    "lad26cd": "lad_code",
+    "lsoa21cd": "lsoa_code",
+    "msoa21cd": "msoa_code",
 }
 
 BRONZE_COLUMNS = list(COLUMN_MAP.values())
@@ -55,19 +69,29 @@ def run():
 
     engine = get_engine()
     ensure_schema(engine, SCHEMA)
+    warned_missing = False
+
+    # DROP ... CASCADE once up front rather than pandas' to_sql
+    # if_exists="replace", which fails once a dbt view depends on this
+    # table. dbt_run always runs again right after ingestion in the DAG,
+    # so any dropped downstream view gets recreated.
+    with engine.begin() as conn:
+        conn.exec_driver_sql(f"DROP TABLE IF EXISTS {SCHEMA}.{TABLE_NAME} CASCADE")
 
     logger.info("Downloading ONS Postcode Directory from %s", NSPL_SOURCE_URL)
     total_rows = 0
-    first_chunk = True
 
     with requests.get(NSPL_SOURCE_URL, stream=True, timeout=300) as resp:
         resp.raise_for_status()
+        # Stream the zip to disk instead of holding it in memory (BytesIO).
         with tempfile.NamedTemporaryFile(suffix=".zip") as tmp:
             for block in resp.iter_content(chunk_size=1024 * 1024):
                 tmp.write(block)
             tmp.flush()
 
             with zipfile.ZipFile(tmp.name) as archive:
+                # NSPL zips nest the data CSV under a "Data/" folder alongside
+                # documentation/user guide files -- find it rather than assume a name.
                 csv_names = [
                     n for n in archive.namelist()
                     if n.lower().endswith(".csv") and "/data/" in n.lower()
@@ -85,8 +109,9 @@ def run():
                         chunk = chunk.rename(columns=COLUMN_MAP)
 
                         missing = [c for c in BRONZE_COLUMNS if c not in chunk.columns]
-                        if missing and first_chunk:
+                        if missing and not warned_missing:
                             logger.warning("NSPL export missing expected columns: %s", missing)
+                            warned_missing = True
                         chunk = chunk[[c for c in BRONZE_COLUMNS if c in chunk.columns]]
 
                         before = len(chunk)
@@ -99,10 +124,9 @@ def run():
                             TABLE_NAME,
                             engine,
                             schema=SCHEMA,
-                            if_exists="replace" if first_chunk else "append",
+                            if_exists="append",
                             index=False,
                         )
-                        first_chunk = False
                         total_rows += len(chunk)
                         logger.info("Loaded chunk (%d rows so far)", total_rows)
 
