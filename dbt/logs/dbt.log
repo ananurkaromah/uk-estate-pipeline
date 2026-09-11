@@ -1,0 +1,16 @@
+[0m12:31:49.819056 [debug] [MainThread]: Sending event: {'category': 'dbt', 'action': 'invocation', 'label': 'start', 'context': [<snowplow_tracker.self_describing_json.SelfDescribingJson object at 0x76c859ff0c90>, <snowplow_tracker.self_describing_json.SelfDescribingJson object at 0x76c85bed4650>, <snowplow_tracker.self_describing_json.SelfDescribingJson object at 0x76c85bed54d0>]}
+
+
+============================== 12:31:49.872492 | 9072f3df-53a4-46f0-b82f-fc311e3386c4 ==============================
+[0m12:31:49.872492 [info ] [MainThread]: Running with dbt=1.8.2
+[0m12:31:49.873331 [debug] [MainThread]: running dbt with arguments {'printer_width': '80', 'indirect_selection': 'eager', 'write_json': 'True', 'log_cache_events': 'False', 'partial_parse': 'True', 'cache_selected_only': 'False', 'profiles_dir': '/opt/airflow/dbt', 'version_check': 'True', 'debug': 'False', 'log_path': '/opt/airflow/dbt/logs', 'warn_error': 'None', 'fail_fast': 'False', 'use_colors': 'True', 'use_experimental_parser': 'False', 'no_print': 'None', 'quiet': 'False', 'warn_error_options': 'WarnErrorOptions(include=[], exclude=[])', 'invocation_command': 'dbt run --project-dir /opt/airflow/dbt --profiles-dir /opt/airflow/dbt', 'introspect': 'True', 'log_format': 'default', 'target_path': 'None', 'static_parser': 'True', 'send_anonymous_usage_stats': 'True'}
+[0m12:31:50.783036 [debug] [MainThread]: Sending event: {'category': 'dbt', 'action': 'project_id', 'label': '9072f3df-53a4-46f0-b82f-fc311e3386c4', 'context': [<snowplow_tracker.self_describing_json.SelfDescribingJson object at 0x76c859b225d0>]}
+[0m12:31:50.854555 [debug] [MainThread]: Sending event: {'category': 'dbt', 'action': 'adapter_info', 'label': '9072f3df-53a4-46f0-b82f-fc311e3386c4', 'context': [<snowplow_tracker.self_describing_json.SelfDescribingJson object at 0x76c85b93c550>]}
+[0m12:31:50.856979 [info ] [MainThread]: Registered adapter: postgres=1.8.2
+[0m12:31:51.057100 [error] [MainThread]: Encountered an error:
+Compilation Error
+  dbt found 1 package(s) specified in packages.yml, but only 0 package(s) installed in /tmp/dbt_packages. Run "dbt deps" to install package dependencies.
+[0m12:31:51.061299 [debug] [MainThread]: Resource report: {"command_name": "run", "command_wall_clock_time": 1.3210315, "process_user_time": 3.53088, "process_kernel_time": 4.086893, "process_mem_max_rss": "108988", "process_in_blocks": "130856", "process_out_blocks": "4624", "command_success": false}
+[0m12:31:51.062052 [debug] [MainThread]: Command `dbt run` failed at 12:31:51.061918 after 1.32 seconds
+[0m12:31:51.062674 [debug] [MainThread]: Sending event: {'category': 'dbt', 'action': 'invocation', 'label': 'end', 'context': [<snowplow_tracker.self_describing_json.SelfDescribingJson object at 0x76c859c76ed0>, <snowplow_tracker.self_describing_json.SelfDescribingJson object at 0x76c859c76750>, <snowplow_tracker.self_describing_json.SelfDescribingJson object at 0x76c85dda3410>]}
+[0m12:31:51.063163 [debug] [MainThread]: Flushing usage events

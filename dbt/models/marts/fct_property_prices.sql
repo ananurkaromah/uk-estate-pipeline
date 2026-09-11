@@ -1,4 +1,4 @@
--- Gold: property transactions enriched with region, ready for Metabase
+-- Gold: property transactions enriched with region and filtered for standard residential (Category A)
 select
     lr.transaction_id,
     lr.price,
@@ -6,6 +6,7 @@ select
     date_trunc('month', lr.transaction_date) as transaction_month,
     lr.property_type,
     lr.postcode,
+    lr.ppd_category_type, 
     pc.region,
     pc.admin_district,
     pc.latitude,
@@ -14,3 +15,4 @@ select
 from {{ ref('stg_land_registry') }} as lr
 left join {{ ref('stg_postcode_master') }} as pc
     on lr.postcode = pc.postcode
+where lr.ppd_category_type = 'A'
