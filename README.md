@@ -1,25 +1,14 @@
 # UK Property Data Pipeline (Estate)
 
-A zero-cost, on-premise, end-to-end data engineering pipeline for UK
-residential property price data — this project to
-demonstrate medallion architecture, orchestration, transformation-as-code,
-data quality testing, and BI serving using a fully open-source stack.
+A zero-cost, on-premise, end-to-end data engineering pipeline for UK residential property price data — this project to demonstrate medallion architecture, orchestration, transformation-as-code, data quality testing, and BI serving using a fully open-source stack.
 
 ---
 
 ## Project Overview
 
-This project ingests UK property transaction data and postcode reference
-data from public, free sources, models it through a bronze → silver → gold
-medallion architecture using dbt, and serves the result through a
-self-hosted BI tool (Metabase). Everything runs locally via Docker
-Compose — there is no cloud dependency and no recurring cost.
+This project ingests UK property transaction data and postcode reference data from public, free sources, models it through a bronze → silver → gold medallion architecture using dbt, and serves the result through a self-hosted BI tool (Metabase). Everything runs locally via Docker Compose — there is no cloud dependency and no recurring cost.
 
-The goal of the project is to show a realistic, small-scale version of a
-production data platform: scheduled ingestion, a documented raw layer,
-tested transformations, a reconciled dimension built from two overlapping
-sources, and an analytics layer that a non-technical stakeholder could
-query through a dashboard.
+The goal of the project is to show a realistic, small-scale version of a production data platform: scheduled ingestion, a documented raw layer, tested transformations, a reconciled dimension built from two overlapping sources, and an analytics layer that a non-technical stakeholder could query through a dashboard.
 
 ## Dataset Description
 
@@ -31,13 +20,7 @@ Three public UK datasets are combined:
 | Postcode lookup | postcodes.io | Live API | Free bulk lookup API, no key |
 | Postcode directory (NSPL) | Office for National Statistics (ONS) | Periodic (~quarterly) | Free bulk CSV, no key |
 
-Price Paid Data provides the transactional record (what sold, for how
-much, when, and its postcode). The two postcode sources provide
-geographic enrichment (region, local authority, latitude/longitude) and
-are deliberately overlapping: postcodes.io is used as the primary,
-easy to query source, while the ONS NSPL is treated as the more
-authoritative government reference and takes precedence wherever both
-resolve the same postcode.
+Price Paid Data provides the transactional record (what sold, for how much, when, and its postcode). The two postcode sources provide geographic enrichment (region, local authority, latitude / longitude) and are deliberately overlapping: postcodes.io is used as the primary, easy to query source, while the ONS NSPL is treated as the more authoritative government reference and takes precedence wherever both resolve the same postcode.
 
 ## Data Dictionary
 
@@ -105,7 +88,7 @@ answer:
 
 ## Pipeline Architecture
 
-![Pipeline architecture](workflow-image.PNG)
+![Pipeline architecture](estate-architecture.png)
 
 <br>
 
@@ -143,6 +126,7 @@ uk-property-pipeline/
 ├── .gitignore
 ├── Dockerfile.airflow
 ├── README.md
+├── estate-architecture.png
 ├── requirements.txt
 ├── docker-compose.yml
 ├── docker/
@@ -213,46 +197,23 @@ A few real issues surfaced while first standing this project up locally —
 documented here since they're the kind of thing worth being able to
 explain in an interview:
 
-- **`dbt-postgres` version pinning**: the adapter and `dbt-core` aren't
-  always released in lockstep — pin only `dbt-postgres` in
-  `requirements.txt` and let it pull in a compatible `dbt-core`, rather
-  than pinning both to the same version number.
-- **`pandas` vs `SQLAlchemy` version conflict**: `pandas>=2.2` requires
-  `SQLAlchemy>=2.0`, but `dbt-core`/`dbt-postgres` 1.8.x require
-  `SQLAlchemy<2.0` — these are mutually exclusive. Fix: pin
-  `pandas==2.1.4` (last release compatible with SQLAlchemy 1.4.x) and
-  `SQLAlchemy==1.4.51` explicitly, rather than leaving either
-  unconstrained.
+- **`dbt-postgres` version pinning**: the adapter and `dbt-core` aren't always released in lockstep — pin only `dbt-postgres` in
+  `requirements.txt` and let it pull in a compatible `dbt-core`, rather than pinning both to the same version number.
+- **`pandas` vs `SQLAlchemy` version conflict**: `pandas>=2.2` requires `SQLAlchemy>=2.0`, but `dbt-core`/`dbt-postgres` 1.8.x require `SQLAlchemy<2.0` — these are mutually exclusive. Fix: pin `pandas==2.1.4` (last release compatible with SQLAlchemy 1.4.x) and `SQLAlchemy==1.4.51` explicitly, rather than leaving either   unconstrained.
 - **dbt log/target directory permissions**: dbt defaults to writing
-  `target/` and `logs/` inside the bind-mounted `dbt/` folder, which the
-  container's `airflow` user may not have write access to on the host.
-  Fixed by passing `--target-path /tmp/dbt_target --log-path /tmp/dbt_logs`
-  to `dbt run`/`dbt test` in the DAG, redirecting both to a
-  container-writable location.
-- **Port 5432 already in use**: usually a native (non-Docker) PostgreSQL
-  service already running on the host. Check with
-  `sudo lsof -i :5432` / `sudo ss -tulpn | grep 5432` and stop it, or
-  remap the host side of the `postgres` service's port mapping instead.
+  `target/` and `logs/` inside the bind-mounted `dbt/` folder, which the container's `airflow` user may not have write access to on the host.
+  Fixed by passing `--target-path /tmp/dbt_target --log-path /tmp/dbt_logs`   to `dbt run`/`dbt test` in the DAG, redirecting both to a   container-writable location.
+- **Port 5432 already in use**: usually a native (non-Docker) PostgreSQL service already running on the host. Check with
+  `sudo lsof -i :5432` / `sudo ss -tulpn | grep 5432` and stop it, or   remap the host side of the `postgres` service's port mapping instead.
 
 ## Future Work & Scalability
 
-- **CI/CD**: add a GitHub Actions workflow running `dbt run`/`dbt test`
-  against a throwaway Postgres service container on every push.
-- **Historical backfill**: Land Registry publishes a full historical
-  bulk file in addition to the monthly update — extending ingestion to
-  backfill would allow multi-year trend analysis instead of just the
-  current month.
-- **Incremental models**: convert `fct_property_prices` to an
-  incremental dbt model rather than a full rebuild as data volume grows.
-- **Great Expectations**: layer in richer data quality checks (value
-  distributions, outlier detection on price) beyond dbt's built-in tests.
-- **Cloud portability**: the medallion design (bronze/silver/gold schemas,
-  dbt models referencing `source()`/`ref()`) would migrate with minimal
-  change to a managed warehouse (e.g. swapping the Postgres connection
-  for Snowflake/BigQuery) if this ever needed to scale past a single
-  on-premise instance.
-- **Monitoring**: add Prometheus + Grafana for pipeline health metrics
-  (task duration, success rate) beyond Airflow's built-in logging.
+- **CI/CD**: add a GitHub Actions workflow running `dbt run`/`dbt test` against a throw away Postgres service container on every push.
+- **Historical backfill**: Land Registry publishes a full historical bulk file in addition to the monthly update — extending ingestion to backfill would allow multi-year trend analysis instead of just the current month.
+- **Incremental models**: convert `fct_property_prices` to an incremental dbt model rather than a full rebuild as data volume grows.
+- **Great Expectations**: layer in richer data quality checks (value distributions, outlier detection on price) beyond dbt's built-in tests.
+- **Cloud portability**: the medallion design (bronze/silver/gold schemas, dbt models referencing `source()`/`ref()`) would migrate with minimal change to a managed warehouse (e.g. swapping the Postgres connection for Snowflake/BigQuery) if this ever needed to scale past a single on-premise instance.
+- **Monitoring**: add Prometheus + Grafana for pipeline health metrics (task duration, success rate) beyond Airflow's built-in logging.
 
 ## Acknowledgements
 
