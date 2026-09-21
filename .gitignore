@@ -21,3 +21,6 @@ airflow/webserver_config.py
 # IDE
 .vscode/*
 .venv
+
+logs/
+*.log
