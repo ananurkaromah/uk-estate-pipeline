@@ -5,7 +5,10 @@
 dbt/target/
 dbt/dbt_packages/
 dbt/.user.yml
-dbt/logs
+logs/
+*.log
+target/
+dbt_packages/
 
 # Python
 __pycache__/
@@ -22,5 +25,3 @@ airflow/webserver_config.py
 .vscode/*
 .venv
 
-logs/
-*.log
