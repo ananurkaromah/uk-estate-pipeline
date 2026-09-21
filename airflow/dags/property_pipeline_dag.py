@@ -10,18 +10,15 @@ Sources:
 - ONS Postcode Directory / NSPL (ons_postcode.py) -- reconciled with
   postcodes.io in dbt (stg_postcode_master.sql)
 """
-import sys
 from datetime import datetime
 
 from airflow import DAG
 from airflow.operators.bash import BashOperator
 from airflow.operators.python import PythonOperator
 
-sys.path.append("/opt/airflow/ingestion")
-
-from land_registry import run as run_land_registry  # noqa: E402
-from ons_postcode import run as run_ons_postcode  # noqa: E402
-from postcodes import run as run_postcodes  # noqa: E402
+from land_registry import run as run_land_registry
+from ons_postcode import run as run_ons_postcode
+from postcodes import run as run_postcodes
 
 DBT_DIR = "/opt/airflow/dbt"
 
@@ -31,7 +28,7 @@ with DAG(
     dag_id="uk_property_pipeline",
     description="Ingest UK property data, transform with dbt, serve via Metabase",
     default_args=default_args,
-    schedule_interval=None,  # set back to "@monthly" once the pipeline is stable
+    schedule_interval="@monthly",  # set back to "@monthly" once the pipeline is stable
     start_date=datetime(2024, 1, 1),
     catchup=False,
     tags=["property", "portfolio"],
@@ -54,13 +51,6 @@ with DAG(
         task_id="ingest_ons_postcode",
         python_callable=run_ons_postcode,
     )
-    # --- Silver + Gold: dbt transformations ---
-    # Installs packages.yml dependencies (e.g. dbt_utils) before dbt run,
-    dbt_deps = BashOperator(
-        task_id="dbt_deps",
-        bash_command=f"cd {DBT_DIR} && dbt deps --profiles-dir {DBT_DIR} --log-path /tmp/dbt_logs",
-    )
-    
     dbt_run = BashOperator(
         task_id="dbt_run",
         bash_command=f"cd {DBT_DIR} && dbt run --profiles-dir {DBT_DIR} --target-path /tmp/dbt_target --log-path /tmp/dbt_logs",
@@ -74,4 +64,4 @@ with DAG(
     )
 
     ingest_land_registry >> enrich_postcodes
-    [enrich_postcodes, ingest_ons_postcode] >> dbt_deps >> dbt_run >> dbt_test
+    [enrich_postcodes, ingest_ons_postcode] >> dbt_run >> dbt_test

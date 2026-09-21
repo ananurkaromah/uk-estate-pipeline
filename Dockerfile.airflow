@@ -2,3 +2,7 @@ FROM apache/airflow:2.9.3-python3.11
 
 COPY requirements.txt /requirements.txt
 RUN pip install --no-cache-dir -r /requirements.txt
+
+COPY dbt/packages.yml /tmp/dbt_build/packages.yml
+COPY dbt/dbt_project.yml /tmp/dbt_build/dbt_project.yml
+RUN cd /tmp/dbt_build && dbt deps --packages-install-path /tmp/dbt_packages
