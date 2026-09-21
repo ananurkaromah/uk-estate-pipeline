@@ -1,10 +1,5 @@
 """Ingest UK HM Land Registry Price Paid Data (monthly CSV, no auth) into bronze.
-
-Downloaded to a temp file and loaded in chunks rather than all at once --
-the monthly Price Paid Data file is large enough that loading the full
-response body and a full DataFrame into memory at once is wasteful,
-especially in a memory-constrained environment (e.g. WSL2 with a capped
-.wslconfig memory setting).
+Downloaded to a temp file and loaded in chunks  --
 """
 import logging
 import tempfile

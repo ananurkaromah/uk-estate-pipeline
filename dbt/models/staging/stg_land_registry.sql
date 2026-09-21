@@ -14,7 +14,8 @@ cleaned as (
         duration,
         town_city,
         district,
-        county
+        county,
+        ppd_category_type
     from source
     where price is not null
       and postcode is not null

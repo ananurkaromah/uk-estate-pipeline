@@ -64,7 +64,7 @@ def run():
 
     # Start this run's table fresh; each batch below appends to it.
     with engine.begin() as conn:
-        conn.exec_driver_sql(f"DROP TABLE IF EXISTS {SCHEMA}.{TABLE_NAME}")
+        conn.exec_driver_sql(f"DROP TABLE IF EXISTS {SCHEMA}.{TABLE_NAME} CASCADE")
 
     session = _build_session()
     total_resolved = 0
