@@ -7,6 +7,7 @@ sources:
       - name: land_registry_pp
       - name: postcode_io
       - name: ons_postcode
+      - name: region_lookup
 
 models:
   - name: stg_land_registry
@@ -43,3 +44,9 @@ models:
         tests:
           - accepted_values:
               values: ["ons", "postcodes_io"]
+              
+  - name: stg_region_lookup
+    description: ONS region code -> human-readable name lookup (silver).
+    columns:
+      - name: region_code
+        tests: [unique, not_null]
