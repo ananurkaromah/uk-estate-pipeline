@@ -1,11 +1,9 @@
-"""Ingest UK HM Land Registry Price Paid Data (monthly CSV, no auth) into bronze.
-Downloaded to a temp file and loaded in chunks  --
-"""
 import logging
 import tempfile
 
 import pandas as pd
 import requests
+from sqlalchemy import inspect
 
 from db import ensure_schema, get_engine
 
@@ -32,21 +30,17 @@ def run():
     engine = get_engine()
     ensure_schema(engine, SCHEMA)
 
-    # Use DROP ... CASCADE once up front rather than pandas' to_sql
-    # if_exists="replace" (which fails once a dbt view depends on this
-    # table -- Postgres won't DROP TABLE if anything references it,
-    # without CASCADE). dbt_run always runs again right after ingestion
-    # in the DAG, so any dropped downstream view gets recreated.
-    with engine.begin() as conn:
-        conn.exec_driver_sql(f"DROP TABLE IF EXISTS {SCHEMA}.{TABLE_NAME} CASCADE")
+    inspector = inspect(engine)
+    if inspector.has_table(TABLE_NAME, schema=SCHEMA):
+        with engine.begin() as conn:
+            conn.exec_driver_sql(f"TRUNCATE TABLE {SCHEMA}.{TABLE_NAME}")
+        logger.info("Truncated existing %s.%s", SCHEMA, TABLE_NAME)
 
     logger.info("Downloading Land Registry Price Paid Data from %s", SOURCE_URL)
     total_rows = 0
 
     with requests.get(SOURCE_URL, stream=True, timeout=300) as resp:
         resp.raise_for_status()
-        # Stream to a temp file on disk instead of holding the whole
-        # response body (resp.text) in memory.
         with tempfile.NamedTemporaryFile(suffix=".csv") as tmp:
             for block in resp.iter_content(chunk_size=1024 * 1024):
                 tmp.write(block)
@@ -55,12 +49,6 @@ def run():
             for chunk in pd.read_csv(
                 tmp.name, header=None, names=COLUMNS, chunksize=CHUNK_SIZE
             ):
-                before = len(chunk)
-                chunk = chunk.dropna(subset=["postcode", "price"])
-                dropped = before - len(chunk)
-                if dropped:
-                    logger.info("Dropped %d rows missing postcode/price in this chunk", dropped)
-
                 chunk.to_sql(
                     TABLE_NAME,
                     engine,

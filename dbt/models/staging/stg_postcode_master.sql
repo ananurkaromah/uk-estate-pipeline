@@ -1,9 +1,3 @@
--- Silver: reconciled postcode lookup, preferring ONS (authoritative) and
--- falling back to postcodes.io where a postcode is missing from ONS.
--- `region` is translated from ONS's raw code to a human-readable name via
--- stg_region_lookup; if no lookup match exists (e.g. pseudo-codes for
--- Channel Islands/Isle of Man), falls back to postcodes.io's name, then
--- finally to the raw ONS code itself rather than showing blank.
 with ons as (
     select * from {{ ref('stg_ons_postcode') }}
 ),
