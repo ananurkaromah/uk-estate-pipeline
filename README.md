@@ -124,16 +124,17 @@ property size/floor-area data, which an AVM requires. See Future Work.)
 Four saved Metabase questions answer the business questions above,
 built against `gold.fct_property_prices`:
 
-**1. Avg Price by Region** — average sale price grouped by region. Filtered to `ppd_category_type = 'A'` and `is_price_outlier = false` to exclude bulk/portfolio transactions and data-entry-error prices.
+**1. Monthly Average Property Price Trends by Region** — month-over-month average price per region, as a line chart. Applies a `txn_count >= 30` floor per (region, month) to avoid a single high-value sale dominating a low-volume month's average.
+<br>
 ![alt text](doc/Monthly-Average-Property-Price-Trends-by-Region.png)
 
-**2. Monthly Average Property Price Trends by Region** — month-over-month average price per region, as a line chart. Applies a `txn_count >= 30` floor per (region, month) to avoid a single high-value sale dominating a low-volume month's average.
-![alt text](doc/Top-20-High-Growth-Property-Districts.png)
-
-**3. Year-over-Year (YoY) Property Price Growth by Region** — annual average price per region with `LAG()`-based YoY % change, as a bar chart. Same `txn_count` floor applied per year.
+**2. Year-over-Year (YoY) Property Price Growth by Region** — annual average price per region with `LAG()`-based YoY % change, as a bar chart. Same `txn_count` floor applied per year.
+<br>
 ![alt text](doc/Year-over-Year-Property-Price-Growth-by-Region.png)
 
-**4. Top 20 High-Growth Property Districts** — postcode-district-level price growth between each district's first and most recent year with sufficient data (`txn_count >= 5` per year), ranked by % growth.
+**3. Top 20 High-Growth Property Districts** — postcode-district-level price growth between each district's first and most recent year with sufficient data (`txn_count >= 5` per year), ranked by % growth.
+<br>
+![alt text](doc/Top-20-High-Growth-Property-Districts.png)
 
 **Note on Data Maturity** (shown on the dashboard itself): these charts apply minimum transaction-count thresholds to reduce noise from single-sale periods. With only a limited window of Land Registry data currently loaded, some regions/districts don't yet have enough
 transactions for a statistically stable average, and thresholds are a stopgap — not a permanent substitute for more historical data (see Future Work).
