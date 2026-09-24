@@ -104,7 +104,9 @@ services:
 
   # Metabase (BI tool)
   metabase:
-    image: metabase/metabase:latest
+    image: metabase/metabase:v0.58.34
+    volumes:
+      - metabase-data:/metabase.db
     ports:
       - "3000:3000"
     depends_on:
@@ -116,3 +118,4 @@ volumes:
   airflow-db-data:
   airflow-logs:
   postgres-data:
+  metabase-data:

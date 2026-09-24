@@ -28,7 +28,7 @@ with DAG(
     dag_id="uk_property_pipeline",
     description="Ingest UK property data, transform with dbt, serve via Metabase",
     default_args=default_args,
-    schedule_interval="@monthly",  # set back to "@monthly" once the pipeline is stable
+    schedule_interval="@monthly", 
     start_date=datetime(2024, 1, 1),
     catchup=False,
     tags=["property", "portfolio"],
