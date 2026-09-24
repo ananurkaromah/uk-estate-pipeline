@@ -1,27 +1,47 @@
-# Secrets
-.env
-
-# dbt
-dbt/target/
-dbt/dbt_packages/
-dbt/.user.yml
-logs/
-*.log
-target/
-dbt_packages/
-
-# Python
+# --- Python ---
 __pycache__/
 *.pyc
+*.pyo
+*.pyd
+.venv/
+venv/
+ENV/
+env/
+*.py[cod]
 
-# Apache Airflow
-airflow.db
-airflow.cfg
+# --- Environment & Secrets ---
+.env
+.env.local
+profiles.yml
+.user.yml
+.env.*
+credentials.json
+service-account.json
+
+# --- dbt ---
+target/
+dbt_packages/
+logs/
+*.csv
+dbt_modules/
+*.log
+query_log.sql
+
+# --- Apache Airflow ---
 airflow/logs/
-airflow/webserver_config.py
+airflow-db/
+*.sqlite
+airflow.cfg
+unittests.cfg
+webserver_config.py
 
+# --- Docker & Database Volumes ---
+postgres-data/
+airflow-db-data/
+airflow-logs/
 
-# IDE
-.vscode/*
-.venv
-
+# --- OS / Editor Specific ---
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
