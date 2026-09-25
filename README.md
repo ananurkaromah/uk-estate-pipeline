@@ -38,10 +38,6 @@ not just move data:
 3. **Geographic market segmentation** — how do prices and volumes differ
    across regions and administrative geographies?
 
-(A fourth common use case — automated property valuation / AVM — is
-explicitly **not** addressed here: HM Land Registry PPD contains no
-property size/floor-area data, which an AVM requires. See Future Work.)
-
 ## Data Dictionary
 
 **`bronze.land_registry_pp`** — one row per property transaction, loaded as-is from the source file (no filtering applied at ingestion time)
@@ -95,7 +91,7 @@ property size/floor-area data, which an AVM requires. See Future Work.)
 
 ## Pipeline Architecture
 
-![Pipeline architecture](estate-architecture.png)
+![alt text](estate-architecture.png)
 
 - **Sources**: HM Land Registry Price Paid Data (CSV), postcodes.io (REST API/JSON), ONS Postcode Directory/NSPL (CSV in zip)
 - **Orchestration**: Apache Airflow schedules and coordinates ingestion and transformation tasks
@@ -121,7 +117,7 @@ property size/floor-area data, which an AVM requires. See Future Work.)
 
 ## Dashboards
 
-Four saved Metabase questions answer the business questions above,
+Three saved Metabase questions answer the business questions above,
 built against `gold.fct_property_prices`:
 
 **1. Monthly Average Property Price Trends by Region** — month-over-month average price per region, as a line chart. Applies a `txn_count >= 30` floor per (region, month) to avoid a single high-value sale dominating a low-volume month's average.
@@ -150,6 +146,10 @@ uk-property-pipeline/
 ├── requirements.txt
 ├── docker-compose.yml
 ├── estate-architecture.png
+├── doc/
+│   ├── Monthly-Average-Property-Price-Trends-by-Region.png
+│   ├── Year-over-Year-Property-Price-Growth-by-Region.png
+│   └── Top-20-High-Growth-Property-Districts.png
 ├── docker/
 │   └── init.sql                     # schemas + grants only -- no table DDL (bronze tables are created dynamically by ingestion scripts)
 ├── airflow/
