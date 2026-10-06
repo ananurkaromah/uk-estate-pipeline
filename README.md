@@ -14,8 +14,8 @@ The pipeline demonstrates a realistic, small-scale version of a production data 
 
 Three public UK datasets are combined:
 
-| Dataset | Publisher | Update frequency | Access |
-|---|---|---|---|
+|    Dataset   |    Publisher    |    Update frequency    |    Access    |
+|--------------|------------------|-----------|---------------------------|
 | Price Paid Data (PPD) | HM Land Registry | Monthly (rolling update) | Free bulk CSV, no auth |
 | Postcode lookup | postcodes.io | Live API | Free bulk lookup API, no key |
 | Postcode directory (NSPL) | Office for National Statistics (ONS) | Periodic (~quarterly) | Free bulk CSV (zip), no key |
@@ -27,16 +27,12 @@ is a *rolling* update — it can include amendments to historical transactions g
 
 ## Business Questions Addressed
 
-This pipeline is designed to answer real property-market questions,
-not just move data:
+This pipeline is designed to answer real property-market questions, not just move data:
 
-1. **Market trend & price index** — how have property prices moved
-   month over month and year over year, by region?
+1. **Market trend & price index** — how have property prices moved month over month and year over year, by region?
 
-2. **Investment hotspot / undervalued area detection** — which postcode
-   districts show the fastest price appreciation over time?
-3. **Geographic market segmentation** — how do prices and volumes differ
-   across regions and administrative geographies?
+2. **Investment hotspot / undervalued area detection** — which postcode districts show the fastest price appreciation over time?
+3. **Geographic market segmentation** — how do prices and volumes differ across regions and administrative geographies?
 
 ## Data Dictionary
 
@@ -91,7 +87,7 @@ not just move data:
 
 ## Pipeline Architecture
 
-![alt text](estate-architecture.png)
+![architecture](doc/estate-architecture.png)
 
 - **Sources**: HM Land Registry Price Paid Data (CSV), postcodes.io (REST API/JSON), ONS Postcode Directory/NSPL (CSV in zip)
 - **Orchestration**: Apache Airflow schedules and coordinates ingestion and transformation tasks
@@ -117,23 +113,18 @@ not just move data:
 
 ## Dashboards
 
-Three saved Metabase questions answer the business questions above,
-built against `gold.fct_property_prices`:
+Three saved Metabase questions answer the business questions above, built against `gold.fct_property_prices`:
 
 **1. Monthly Average Property Price Trends by Region** — month-over-month average price per region, as a line chart. Applies a `txn_count >= 30` floor per (region, month) to avoid a single high-value sale dominating a low-volume month's average.
-<br>
-![alt text](doc/Monthly-Average-Property-Price-Trends-by-Region.png)
+![Average-Property-Price-Trends-by-Region](doc/Monthly-Average-Property-Price-Trends-by-Region.png)
 
 **2. Year-over-Year (YoY) Property Price Growth by Region** — annual average price per region with `LAG()`-based YoY % change, as a bar chart. Same `txn_count` floor applied per year.
-<br>
-![alt text](doc/Year-over-Year-Property-Price-Growth-by-Region.png)
+![Year-over-Year-Property-Price-Growth-by-Region](doc/Year-over-Year-Property-Price-Growth-by-Region.png)
 
 **3. Top 20 High-Growth Property Districts** — postcode-district-level price growth between each district's first and most recent year with sufficient data (`txn_count >= 5` per year), ranked by % growth.
-<br>
-![alt text](doc/Top-20-High-Growth-Property-Districts.png)
+![Top-20-High-Growth-Property-Districts](doc/Top-20-High-Growth-Property-Districts.png)
 
-**Note on Data Maturity** (shown on the dashboard itself): these charts apply minimum transaction-count thresholds to reduce noise from single-sale periods. With only a limited window of Land Registry data currently loaded, some regions/districts don't yet have enough
-transactions for a statistically stable average, and thresholds are a stopgap — not a permanent substitute for more historical data (see Future Work).
+**Note on Data Maturity** (shown on the dashboard itself): these charts apply minimum transaction-count thresholds to reduce noise from single-sale periods. With only a limited window of Land Registry data currently loaded, some regions/districts don't yet have enough transactions for a statistically stable average, and thresholds are a stopgap — not a permanent substitute for more historical data (see Future Work).
 
 ## Project Folder Structure
 
@@ -145,8 +136,8 @@ uk-property-pipeline/
 ├── README.md
 ├── requirements.txt
 ├── docker-compose.yml
-├── estate-architecture.png
 ├── doc/
+|   ├── estate-architecture.png
 │   ├── Monthly-Average-Property-Price-Trends-by-Region.png
 │   ├── Year-over-Year-Property-Price-Growth-by-Region.png
 │   └── Top-20-High-Growth-Property-Districts.png
@@ -196,9 +187,7 @@ Fill in `.env`:
 - `AIRFLOW__WEBSERVER__SECRET_KEY` — generate with:
   `python3 -c "import secrets; print(secrets.token_hex(16))"`
 - `AIRFLOW_UID` — set to your host user's UID: `echo "AIRFLOW_UID=$(id -u)" >> .env`
-- `NSPL_SOURCE_URL` — current NSPL download link from the
-  [ONS Open Geography Portal](https://geoportal.statistics.gov.uk) (this
-  link changes between releases and points to a `.zip`, not a raw CSV)
+- `NSPL_SOURCE_URL` — current NSPL download link from the [ONS Open Geography Portal](https://geoportal.statistics.gov.uk) (this link changes between releases and points to a `.zip`, not a raw CSV)
 
 Build and start everything:
 
@@ -207,36 +196,17 @@ docker compose up -d --build
 ```
 
 - **Airflow UI**: http://localhost:8080 (`admin` / `admin`)
-- **Metabase**: http://localhost:3000 — on first run, complete the setup
-  wizard and connect it to the `postgres` service using the credentials
-  from `.env`; build dashboards against the `gold` schema only. Metabase's
-  setup only needs to be done once — its data persists in a named volume
-  across restarts
-- Trigger the `uk_property_pipeline` DAG from the Airflow UI to run the
-  full ingestion → transform flow. `dbt deps` runs once automatically
-  during `airflow-init`, not as part of every DAG run
+- **Metabase**: http://localhost:3000 — on first run, complete the setup wizard and connect it to the `postgres` service using the credentials from `.env`; build dashboards against the `gold` schema only. Metabase's setup only needs to be done once — its data persists in a named volume across restarts
+- Trigger the `uk_property_pipeline` DAG from the Airflow UI to run the full ingestion → transform flow. `dbt deps` runs once automatically during `airflow-init`, not as part of every DAG run
 
 ## Future Work & Scalability
 
-- **Historical backfill**: currently ingesting only the rolling monthly
-  Land Registry update. Backfilling the full historical PPD file would
-  give month-level and district-level averages enough transaction volume
-  to be reliable without the current `txn_count` thresholds.
-- **CI/CD**: add a GitHub Actions workflow running `dbt run`/`dbt test`
-  against a throwaway Postgres service container on every push.
-- **Incremental models**: convert `fct_property_prices` to an
-  incremental dbt model, using `transaction_id` + `record_status` for
-  proper upsert handling, rather than a full truncate-and-reload each run.
-- **AVM / property valuation**: would require a genuinely new data
-  source with floor-area data (e.g. EPC — Energy Performance
-  Certificates, also free/open) plus address-level matching to Land
-  Registry, since PPD alone has no size data to compute price-per-sqm.
-- **Cloud portability**: the medallion design (bronze/silver/gold
-  schemas, dbt models referencing `source()`/`ref()`) would migrate with
-  minimal change to a managed warehouse if this ever needed to scale
-  past a single on-premise instance.
-- **Monitoring**: add Prometheus + Grafana for pipeline health metrics
-  (task duration, success rate) beyond Airflow's built-in logging.
+- **Historical backfill**: currently ingesting only the rolling monthly   Land Registry update. Backfilling the full historical PPD file would   give month-level and district-level averages enough transaction volume to be reliable without the current `txn_count` thresholds.
+- **CI/CD**: add a GitHub Actions workflow running `dbt run`/`dbt test`  against a throwaway Postgres service container on every push.
+- **Incremental models**: convert `fct_property_prices` to an incremental dbt model, using `transaction_id` + `record_status` for proper upsert handling, rather than a full truncate-and-reload each run.
+- **AVM / property valuation**: would require a genuinely new data source with floor-area data (e.g. EPC — Energy Performance Certificates, also free/open) plus address-level matching to Land Registry, since PPD alone has no size data to compute price-per-sqm.
+- **Cloud portability**: the medallion design (bronze/silver/gold schemas, dbt models referencing `source()`/`ref()`) would migrate with minimal change to a managed warehouse if this ever needed to scale past a single on-premise instance.
+- **Monitoring**: add Prometheus + Grafana for pipeline health metrics (task duration, success rate) beyond Airflow's built-in logging.
 
 ## Acknowledgements
 
