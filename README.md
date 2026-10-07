@@ -87,7 +87,7 @@ This pipeline is designed to answer real property-market questions, not just mov
 
 ## Pipeline Architecture
 
-![architecture](doc/estate-architecture.png)
+![architecture](doc/update-architecture.png)
 
 - **Sources**: HM Land Registry Price Paid Data (CSV), postcodes.io (REST API/JSON), ONS Postcode Directory/NSPL (CSV in zip)
 - **Orchestration**: Apache Airflow schedules and coordinates ingestion and transformation tasks
