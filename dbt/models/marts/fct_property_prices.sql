@@ -1,3 +1,14 @@
+{{
+    config(
+        materialized='incremental',
+        unique_key='transaction_id'
+    )
+}}
+
+-- Gold: property transactions enriched with region, ready for Metabase.
+-- Incremental + unique_key='transaction_id' means dbt merges on
+-- transaction_id across runs -- new transactions get inserted, existing
+-- ones get updated in place -- instead of a full table rebuild every run.
 select
     lr.transaction_id,
     lr.price,
