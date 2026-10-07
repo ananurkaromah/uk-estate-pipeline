@@ -91,7 +91,9 @@ This pipeline is designed to answer real property-market questions, not just mov
 
 - **Sources**: HM Land Registry Price Paid Data (CSV), postcodes.io (REST API/JSON), ONS Postcode Directory/NSPL (CSV in zip)
 - **Orchestration**: Apache Airflow schedules and coordinates ingestion and transformation tasks
-- **Extract & Load**: raw data lands **as-is** in the bronze schema of a single PostgreSQL instance — no cleaning, no type casting, no filtering at ingestion time. Each run **truncates and reloads** the target table (not drop+recreate), which keeps downstream dbt views/tables intact instead of breaking on `DependentObjectsStillExist`
+- **Extract & Load**: raw data lands **as-is** in the bronze schema of a single PostgreSQL instance — no cleaning, no type casting, no filtering at ingestion time. 
+  - `postcode_io` and `ons_postcode` (reference/dimension data, not time-series) use **truncate-and-reload** per run.
+  - `land_registry_pp` (transactional fact data) uses **UPSERT on `transaction_id`** (v1.0+), since the source file is a rolling window, not cumulative — truncate-and-reload would cause historical data to be silently discarded between runs (see Version History).
 - **Transform**: dbt-core reads from bronze and builds:
   - **silver** — cleaned, typed staging models (`stg_land_registry`, `stg_postcode_io`, `stg_ons_postcode`, `stg_region_lookup`, `stg_postcode_master`) — this is the *only* layer where nulls are filtered and types are cast
   - **gold** — analytics-ready marts (`gold.fct_property_prices`, `gold.dim_region`)
@@ -107,7 +109,7 @@ This pipeline is designed to answer real property-market questions, not just mov
 | Orchestration | Apache Airflow 2.9.3 (Docker, LocalExecutor) | DAG-based dependency management |
 | Containerization | Docker Compose, custom Airflow image (`Dockerfile.airflow`) | `PYTHONPATH` set at the container level so ingestion modules import cleanly, no `sys.path` hacks in DAG code |
 | Storage / warehouse | PostgreSQL 16 | Schema-based medallion separation (bronze/silver/gold) |
-| Transformation | dbt-core 1.8.2 + dbt-postgres 1.8.2 (explicitly pinned together) | `dbt deps` runs once during `airflow-init`, not on every DAG execution |
+| Transformation | dbt-core 1.8.2 + dbt-postgres 1.8.2 | `fct_property_prices` uses incremental materialization with `unique_key='transaction_id'` (v1.0+) |
 | BI / serving | Metabase, pinned to `v0.58.34` (LTS, security support through Feb 2027) | Chosen deliberately after checking metabase.com/version-support — not `latest`, for reproducibility |
 | Python deps | pandas 2.1.4, SQLAlchemy 1.4.51 (both pinned together — pandas ≥2.2 requires SQLAlchemy ≥2.0, which conflicts with dbt 1.8.x's SQLAlchemy <2.0 requirement) | |
 
@@ -203,10 +205,20 @@ docker compose up -d --build
 
 - **Historical backfill**: currently ingesting only the rolling monthly   Land Registry update. Backfilling the full historical PPD file would   give month-level and district-level averages enough transaction volume to be reliable without the current `txn_count` thresholds.
 - **CI/CD**: add a GitHub Actions workflow running `dbt run`/`dbt test`  against a throwaway Postgres service container on every push.
-- **Incremental models**: convert `fct_property_prices` to an incremental dbt model, using `transaction_id` + `record_status` for proper upsert handling, rather than a full truncate-and-reload each run.
 - **AVM / property valuation**: would require a genuinely new data source with floor-area data (e.g. EPC — Energy Performance Certificates, also free/open) plus address-level matching to Land Registry, since PPD alone has no size data to compute price-per-sqm.
 - **Cloud portability**: the medallion design (bronze/silver/gold schemas, dbt models referencing `source()`/`ref()`) would migrate with minimal change to a managed warehouse if this ever needed to scale past a single on-premise instance.
 - **Monitoring**: add Prometheus + Grafana for pipeline health metrics (task duration, success rate) beyond Airflow's built-in logging.
+
+## Done
+- **Incremental model optimization**: `fct_property_prices` currently re-scans all of `stg_land_registry` on every run before merging by `unique_key` — correct, but not maximally efficient at larger data volumes. Adding an `is_incremental()` filter (e.g. `where transaction_date > (select max(transaction_date) from {{ this }})`) would limit each run to genuinely new/changed rows.
+
+## Version History
+
+- **v0.1 — Baseline medallion pipeline.** Bronze layer used truncate-and-reload per ingestion run for all three sources; gold layer (`fct_property_prices`) used full-refresh (`table`) dbt materialization.
+- **v1.0 — Incremental load with deduplication.** Converted Land Registry ingestion (`land_registry.py`) from truncate-and-reload to UPSERT, keyed on `transaction_id`. Converted `fct_property_prices` to an `incremental` dbt materialization with `unique_key='transaction_id'`.
+  **Why:** production-style monitoring across two consecutive monthly runs revealed that the gold table's row count had *decreased* (101,334 → 90,612) instead of accumulating — because HM Land Registry's source file is a rolling window, not a cumulative file, truncate-and-reload was silently discarding historical transactions
+  every run. This broke the time-series assumption behind the Monthly Trend and YoY Growth dashboards. `postcode_io` and `ons_postcode` (reference/dimension data, not transactional) retain truncate-and-reload, since they don't need historical accumulation.
+
 
 ## Acknowledgements
 
