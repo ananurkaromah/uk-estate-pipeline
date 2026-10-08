@@ -174,7 +174,7 @@ LIMIT 10
 
 
 
-**Note on Data Maturity** — Trend and growth views apply minimum transaction-count thresholds to avoid single-sale noise. History is limited to what the pipeline has loaded so far, so these views become more reliable after a historical backfill or after a historical backfill.
+**Note on Data Maturity** — Trend and growth views apply minimum transaction-count thresholds to avoid single-sale noise. History is limited to what the pipeline has loaded so far, so these views become more reliable after a historical backfill.
 
 ## 3.	Market Segmentation 
 #### 3.1 Median Price by Property Type per Region
@@ -259,4 +259,4 @@ ORDER BY region, pct_of_region DESC
 ```
 **Visualization:** Stacked bar chart (x: region, y: pct_of_region, series: property_type_label)
 
-**Note on Data Maturity** — Trend and growth views apply minimum transaction-count thresholds to avoid single-sale noise. History is limited to what the pipeline has loaded so far, so these views become more reliable after a historical backfill or after a historical backfill.
+**Note on Data Maturity** — Trend and growth views apply minimum transaction-count thresholds to avoid single-sale noise. History is limited to what the pipeline has loaded so far, so these views become more reliable after a historical backfill.
