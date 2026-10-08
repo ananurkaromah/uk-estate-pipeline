@@ -9,32 +9,41 @@ Three business insight built against `gold.fct_property_prices`:
 
 ### 1.	Overview and Data Quality 
 ![Overview and Data Quality](doc/Metabase-Overview-and-Data-Quality.png)
-<br>
-**1. Total Transactions**
+
+**1.Total Transactions**
 Number of transactions currently loaded in the gold layer.
+
 ``` 
 SELECT COUNT(*) AS total_transactions FROM goldfct_property_prices;
 ```
+
 **2. Latest Transaction Date**
 Most recent transfer date in the loaded data (data freshness indicator).
+
 ```
 SELECT MAX(transaction_date) AS latest_transaction_date FROM gold.fct_property_prices; 
 ```
+
 **3. Median Price (Category A, non-outlier)**
 Median sale price for standard (Category A), non-outlier transactions.
+
 ```
 SELECT PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY price) AS median_price
 FROM gold.fct_property_prices
 WHERE ppd_category_type = 'A' AND is_price_outlier = FALSE;
 ```
+
 **4. Geographic Match Rate**
 Share of transactions whose postcode resolved to a region via ONS NSPL (postcodes.io as fallback).
+
 ```
 SELECT ROUND(100.0 * COUNT(*) FILTER (WHERE region IS NOT NULL) / COUNT(*), 1) AS geo_match_rate_pct
 FROM gold.fct_property_prices;
 ```
+
 **5. Price Outliers Flagged**
 Transactions priced above £10M, flagged as likely data-entry errors or non-market bulk entries. Kept in the data for traceability, excluded from price charts.
+
 ```
 SELECT COUNT(*) FILTER (WHERE is_price_outlier) AS flagged_outliers
 FROM gold.fct_property_prices;
