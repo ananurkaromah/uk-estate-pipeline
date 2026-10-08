@@ -27,10 +27,14 @@ is a *rolling* update — it can include amendments to historical transactions g
 
 ## Business Questions Addressed
 
-This pipeline is designed to answer real property-market questions, not just move data:
-1. Overview & Data Quality
-2. Market Trends & Hotspots
-3. Market Segmentation
+This pipeline is designed to answer real property-market questions, not just move data. Each question maps to a section of the [dashboard](dashboard.md):
+
+| # | Business question | Dashboard section |
+|---|---|---|
+| 1 | How have property prices moved over time, month over month and year over year, by region? | 2.1 Monthly price trends, 2.2 YoY growth |
+| 2 | Which postcode districts have shown the strongest historical price appreciation? | 2.3 Top 10 districts by CAGR |
+| 3 | How do prices, transaction activity, and housing mix differ across regions? | 3.1 to 3.3 Market Segmentation |
+| 4 | Can the data be trusted? (freshness, geographic match rate, flagged outliers) | 1. Overview and Data Quality |
 
 ## Data Dictionary
 
