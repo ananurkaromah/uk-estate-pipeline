@@ -31,8 +31,8 @@ This pipeline is designed to answer real property-market questions, not just mov
 
 | # | Business question | Dashboard section |
 |---|---|---|
-| 1 | How have property prices moved over time, month over month and year over year, by region? | 2.1 Monthly price trends, 2.2 YoY growth |
-| 2 | Which postcode districts have shown the strongest historical price appreciation? | 2.3 Top 10 districts by CAGR |
+| 1 | How have property prices moved over time, month over month and year over year, by region? | 2.1 Monthly price trends |
+| 2 | Which postcode districts have shown the strongest historical price appreciation? | 2.2 Top 10 districts by CAGR |
 | 3 | How do prices, transaction activity, and housing mix differ across regions? | 3.1 to 3.3 Market Segmentation |
 | 4 | Can the data be trusted? (freshness, geographic match rate, flagged outliers) | 1. Overview and Data Quality |
 
@@ -202,7 +202,7 @@ docker compose up -d --build
 
 ## Future Work & Scalability
 
-- **Historical backfill**: currently ingesting only the rolling monthly   Land Registry update. Backfilling the full historical PPD file would   give month-level and district-level averages enough transaction volume to be reliable without the current `txn_count` thresholds.
+- **Historical backfill (planned v1.1):** The pipeline currently loads only HM Land Registry's monthly update file (the current month's transactions plus amendments to earlier releases), so earlier periods are thinly populated and the trend and growth views rely on minimum-sample thresholds. The plan is a one-off backfill from the yearly Price Paid Data files (115–230 MB each, starting with the last five years) through the existing UPSERT path, run outside the monthly DAG in insert-only mode so it never overwrites rows the monthly run has updated. Prerequisites: (1) incremental UPSERT load merged and verified, (2) postcodes.io enrichment restricted to postcodes missing from ONS, since ONS already resolves 99.9% of transactions, and (3) an `is_incremental()` filter on `fct_property_prices` so each run no longer rescans the full history. Afterwards, the Data Maturity notes and the YoY and CAGR views will be re-evaluated.
 - **CI/CD**: add a GitHub Actions workflow running `dbt run`/`dbt test`  against a throwaway Postgres service container on every push.
 - **AVM / property valuation**: would require a genuinely new data source with floor-area data (e.g. EPC — Energy Performance Certificates, also free/open) plus address-level matching to Land Registry, since PPD alone has no size data to compute price-per-sqm.
 - **Cloud portability**: the medallion design (bronze/silver/gold schemas, dbt models referencing `source()`/`ref()`) would migrate with minimal change to a managed warehouse if this ever needed to scale past a single on-premise instance.
@@ -217,6 +217,7 @@ docker compose up -d --build
 - **v1.0 — Incremental load with deduplication.** Converted Land Registry ingestion (`land_registry.py`) from truncate-and-reload to UPSERT, keyed on `transaction_id`. Converted `fct_property_prices` to an `incremental` dbt materialization with `unique_key='transaction_id'`.
   **Why:** production-style monitoring across two consecutive monthly runs revealed that the gold table's row count had *decreased* (101,334 → 90,612) instead of accumulating — because HM Land Registry's source file is a rolling window, not a cumulative file, truncate-and-reload was silently discarding historical transactions
   every run. This broke the time-series assumption behind the Monthly Trend and YoY Growth dashboards. `postcode_io` and `ons_postcode` (reference/dimension data, not transactional) retain truncate-and-reload, since they don't need historical accumulation.
+- **v1.1 (planned):** Historical backfill from yearly Price Paid Data files, with enrichment scoped to postcodes not resolved by ONS.
 
 
 ## Acknowledgements
