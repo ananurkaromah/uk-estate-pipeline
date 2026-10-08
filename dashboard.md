@@ -10,7 +10,7 @@ Three business insight built against `gold.fct_property_prices`:
 ### 1.	Overview and Data Quality 
 ![Overview and Data Quality](doc/Metabase-Overview-and-Data-Quality.png)
 
-#### .Total Transactions
+#### 1.Total Transactions
 Number of transactions currently loaded in the gold layer.
 
 ``` 
@@ -217,7 +217,7 @@ ORDER BY txn_count DESC
 #### 3.3	Property Type Mix per Region (%)
 Share of standard transactions by property type within each region, showing structural differences such as flat-heavy versus detached-heavy markets.
 
-![Property-Type-Mix-per-Region(%)](doc/Metabase-Property-Type-Mix-per-Region(%).png)
+![Property-Type-Mix-per-Region(%)](<doc/Metabase-Property-Type-Mix-per-Region(%).png>)
 
 ```
 WITH counts AS (
