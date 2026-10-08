@@ -15,7 +15,7 @@ combined as (
         coalesce(ons.postcode, fallback.postcode) as postcode,
         coalesce(ons.latitude, fallback.latitude) as latitude,
         coalesce(ons.longitude, fallback.longitude) as longitude,
-        coalesce(rl.region_name, fallback.region, ons.region) as region,
+        coalesce(rl.region_name, fallback.region, case ons.region when 'W99999999' then 'Wales' else ons.region end) as region,
         coalesce(ons.admin_district, fallback.admin_district) as admin_district,
         case when ons.postcode is not null then 'ons' else 'postcodes_io' end as source
     from ons

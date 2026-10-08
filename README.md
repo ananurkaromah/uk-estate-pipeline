@@ -28,11 +28,9 @@ is a *rolling* update — it can include amendments to historical transactions g
 ## Business Questions Addressed
 
 This pipeline is designed to answer real property-market questions, not just move data:
-
-1. **Market trend & price index** — how have property prices moved month over month and year over year, by region?
-
-2. **Investment hotspot / undervalued area detection** — which postcode districts show the fastest price appreciation over time?
-3. **Geographic market segmentation** — how do prices and volumes differ across regions and administrative geographies?
+1. Overview & Data Quality
+2. Market Trends & Hotspots
+3. Market Segmentation
 
 ## Data Dictionary
 
@@ -114,19 +112,7 @@ This pipeline is designed to answer real property-market questions, not just mov
 | Python deps | pandas 2.1.4, SQLAlchemy 1.4.51 (both pinned together — pandas ≥2.2 requires SQLAlchemy ≥2.0, which conflicts with dbt 1.8.x's SQLAlchemy <2.0 requirement) | |
 
 ## Dashboards
-
-Three saved Metabase questions answer the business questions above, built against `gold.fct_property_prices`:
-
-**1. Monthly Average Property Price Trends by Region** — month-over-month average price per region, as a line chart. Applies a `txn_count >= 30` floor per (region, month) to avoid a single high-value sale dominating a low-volume month's average.
-![Average-Property-Price-Trends-by-Region](doc/Monthly-Average-Property-Price-Trends-by-Region.png)
-
-**2. Year-over-Year (YoY) Property Price Growth by Region** — annual average price per region with `LAG()`-based YoY % change, as a bar chart. Same `txn_count` floor applied per year.
-![Year-over-Year-Property-Price-Growth-by-Region](doc/Year-over-Year-Property-Price-Growth-by-Region.png)
-
-**3. Top 20 High-Growth Property Districts** — postcode-district-level price growth between each district's first and most recent year with sufficient data (`txn_count >= 5` per year), ranked by % growth.
-![Top-20-High-Growth-Property-Districts](doc/Top-20-High-Growth-Property-Districts.png)
-
-**Note on Data Maturity** (shown on the dashboard itself): these charts apply minimum transaction-count thresholds to reduce noise from single-sale periods. With only a limited window of Land Registry data currently loaded, some regions/districts don't yet have enough transactions for a statistically stable average, and thresholds are a stopgap — not a permanent substitute for more historical data (see Future Work).
+For complete information regarding metrics, usage, and visualization, please read the [Dashboard Documentation](dashboard.md).
 
 ## Project Folder Structure
 
@@ -139,10 +125,14 @@ uk-property-pipeline/
 ├── requirements.txt
 ├── docker-compose.yml
 ├── doc/
-|   ├── estate-architecture.png
-│   ├── Monthly-Average-Property-Price-Trends-by-Region.png
-│   ├── Year-over-Year-Property-Price-Growth-by-Region.png
-│   └── Top-20-High-Growth-Property-Districts.png
+|   ├── update-architecture.png
+│   ├── Metabase-Average-Price-by-Property-Type-per-Region.png
+│   ├── Metabase-Monthly-Average-Property-Price-Trends-by-Region.png
+│   ├── Metabase-Overview-and-Data-Quality.png
+│   ├── Metabase-Property-Type-Mix-per-Region(%).png
+│   ├── Metabase-Top-10-Districts-by-Annual-Price-Growth(CAGR).png
+|   ├── Metabase-Transaction-Volume-by-Region-(last 12 months).png
+│   └── Metabase-Year-over-Year-Property-Price-Growth-by-Region.png
 ├── docker/
 │   └── init.sql                     # schemas + grants only -- no table DDL (bronze tables are created dynamically by ingestion scripts)
 ├── airflow/
