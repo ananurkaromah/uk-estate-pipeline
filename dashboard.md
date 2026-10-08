@@ -217,7 +217,7 @@ ORDER BY txn_count DESC
 #### 3.3	Property Type Mix per Region (%)
 Share of standard transactions by property type within each region, showing structural differences such as flat-heavy versus detached-heavy markets.
 
-![Property-Type-Mix-per-Region(%)](<doc/Metabase-Property-Type-Mix-per-Region(%).png>)
+![Property-Type-Mix-per-Region(%)](doc/Metabase-Property-Type-Mix-per-Region(%).png)
 
 ```
 WITH counts AS (
