@@ -85,7 +85,7 @@ This pipeline is designed to answer real property-market questions, not just mov
 
 ## Pipeline Architecture
 
-![architecture](doc/update-architecture.png)
+![architecture](doc/architecture.png)
 
 - **Sources**: HM Land Registry Price Paid Data (CSV), postcodes.io (REST API/JSON), ONS Postcode Directory/NSPL (CSV in zip)
 - **Orchestration**: Apache Airflow schedules and coordinates ingestion and transformation tasks
@@ -112,7 +112,11 @@ This pipeline is designed to answer real property-market questions, not just mov
 | Python deps | pandas 2.1.4, SQLAlchemy 1.4.51 (both pinned together — pandas ≥2.2 requires SQLAlchemy ≥2.0, which conflicts with dbt 1.8.x's SQLAlchemy <2.0 requirement) | |
 
 ## Dashboards
-For complete information regarding metrics, usage, and visualization, please read the [Dashboard Documentation](dashboard.md).
+
+![Dashboard overview](doc/01-overview-data-quality.png)
+
+For complete information regarding metrics, queries, and visualizations, see the [Dashboard Documentation](dashboard.md).
+
 
 ## Project Folder Structure
 
@@ -126,14 +130,14 @@ uk-property-pipeline/
 ├── requirements.txt
 ├── docker-compose.yml
 ├── doc/
-|   ├── update-architecture.png
-│   ├── Metabase-Average-Price-by-Property-Type-per-Region.png
-│   ├── Metabase-Monthly-Average-Property-Price-Trends-by-Region.png
-│   ├── Metabase-Overview-and-Data-Quality.png
-│   ├── Metabase-Property-Type-Mix-per-Region(%).png
-│   ├── Metabase-Top-10-Districts-by-Annual-Price-Growth(CAGR).png
-|   ├── Metabase-Transaction-Volume-by-Region-(last 12 months).png
-│   └── Metabase-Year-over-Year-Property-Price-Growth-by-Region.png
+│   ├── 01-overview-data-quality.png
+│   ├── 02-monthly-price-trend.png
+│   ├── 03-yoy-price-growth.png
+│   ├── 04-top-10-districts-cagr.png
+│   ├── 05-median-price-by-property-type.png
+│   ├── 06-transaction-volume.png
+│   ├── 07-property-type-mix.png
+│   └── update-architecture.png
 ├── docker/
 │   └── init.sql                     # schemas + grants only -- no table DDL (bronze tables are created dynamically by ingestion scripts)
 ├── airflow/
