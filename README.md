@@ -22,8 +22,7 @@ Three public UK datasets are combined:
 
 Price Paid Data provides the transactional record (what sold, for how much, when, and its postcode). The two postcode sources provide geographic enrichment (region, local authority, latitude/longitude) and are deliberately overlapping: ONS NSPL is treated as the authoritative government reference and takes precedence, with postcodes.io used as a fallback for any postcode ONS doesn't resolve.
 
-**Note on the Land Registry source file:** `pp-monthly-update-new-version.csv`
-is a *rolling* update — it can include amendments to historical transactions going back decades, not just new sales from the current month. Seeing transaction dates spanning many years in a single download is expected, not a bug.
+**Note on the Land Registry source file:** `pp-monthly-update-new-version.csv` is the monthly update file. It contains the current month's transactions plus updates to earlier releases, so transaction dates can span many years in a single download. This is expected, not a bug. Price Paid Data covers England and Wales only; the postcode reference data covers the whole UK.
 
 ## Business Questions Addressed
 
@@ -42,7 +41,7 @@ This pipeline is designed to answer real property-market questions, not just mov
 
 | Column | Type | Description |
 |---|---|---|
-| transaction_id | text | Unique ID for the transaction |
+| transaction_id | text (primary key)  | Unique ID for the transaction |
 | price | numeric | Sale price, GBP, as recorded by HM Land Registry |
 | date_of_transfer | date | Date the transfer was completed |
 | postcode | text | Property postcode |
@@ -203,16 +202,17 @@ docker compose up -d --build
 
 - **v0.1 — Baseline medallion pipeline.** Bronze layer used truncate-and-reload per ingestion run for all three sources; gold layer (`fct_property_prices`) used full-refresh (`table`) dbt materialization.
 - **v1.0 — Incremental load with deduplication.** Converted Land Registry ingestion (`land_registry.py`) from truncate-and-reload to UPSERT, keyed on `transaction_id`. Converted `fct_property_prices` to an `incremental` dbt materialization with `unique_key='transaction_id'`.
-  **Why:** production-style monitoring across two consecutive monthly runs revealed that the gold table's row count had *decreased* (101,334 → 90,612) instead of accumulating — because HM Land Registry’s monthly update file is not a cumulative history, truncate-and-reload was silently discarding historical transactions every run. This broke the time-series assumption behind the Monthly Trend and YoY Growth dashboards. `postcode_io` and `ons_postcode` (reference/dimension data, not transactional) retain truncate-and-reload, since they don't need historical accumulation.
+  **Why:** production-style monitoring across two consecutive monthly runs revealed that the gold table's row count had *decreased* (101,334 → 90,612) instead of accumulating — because HM Land Registry’s monthly update file is not a cumulative history, truncate-and-reload was silently discarding historical transactions every run. This broke the time-series assumption behind the monthly trend and growth views. `postcode_io` and `ons_postcode` (reference/dimension data, not transactional) retain truncate-and-reload, since they don't need historical accumulation.
 - **v1.1 (planned):** Historical backfill from yearly Price Paid Data files, with enrichment scoped to postcodes not resolved by ONS.
 
 ## Future Work & Scalability
 
-- **Historical backfill (planned v1.1):** The pipeline currently loads only HM Land Registry's monthly update file (the current month's transactions plus amendments to earlier releases), so earlier periods are thinly populated and the trend and growth views rely on minimum-sample thresholds. The plan is a one-off backfill from the yearly Price Paid Data files (115–230 MB each, starting with the last five years) through the existing UPSERT path, run outside the monthly DAG in insert-only mode so it never overwrites rows the monthly run has updated. Prerequisites: (1) incremental UPSERT load merged and verified, (2) postcodes.io enrichment restricted to postcodes missing from ONS, since ONS already resolves 99.9% of transactions, and (3) an `is_incremental()` filter on `fct_property_prices` so each run no longer rescans the full history. Afterwards, the Data Maturity notes and the YoY and CAGR views will be re-evaluated.
+- **Historical backfill (planned v1.1):** The pipeline currently loads only HM Land Registry's monthly update file (the current month's transactions plus amendments to earlier releases), so earlier periods are thinly populated and the trend and growth views rely on minimum-sample thresholds. The plan is a one-off backfill from the yearly Price Paid Data files (115–230 MB each, starting with the last five years) through the existing UPSERT path, run outside the monthly DAG in insert-only mode so it never overwrites rows the monthly run has updated. Prerequisites: (1) incremental UPSERT load merged and verified, (2) postcodes.io enrichment restricted to postcodes missing from ONS, since ONS already resolves 99.9% of transactions, and (3) an `is_incremental()` filter on `fct_property_prices` so each run no longer rescans the full history. Afterwards, the Data Maturity notes will be revisited, the CAGR view re-evaluated, and a year-over-year view can be reintroduced.
 - **CI/CD**: add a GitHub Actions workflow running `dbt run`/`dbt test`  against a throwaway Postgres service container on every push.
 - **AVM / property valuation**: would require a genuinely new data source with floor-area data (e.g. EPC — Energy Performance Certificates, also free/open) plus address-level matching to Land Registry, since PPD alone has no size data to compute price-per-sqm.
 - **Cloud portability**: the medallion design (bronze/silver/gold schemas, dbt models referencing `source()`/`ref()`) would migrate with minimal change to a managed warehouse if this ever needed to scale past a single on-premise instance.
 - **Monitoring**: add Prometheus + Grafana for pipeline health metrics (task duration, success rate) beyond Airflow's built-in logging.
+- **Local authority names:** `admin_district` currently holds ONS local authority district codes for ONS-resolved postcodes. The code-to-name file is bundled in the same NSPL zip (`Documents/`), so it can be loaded and joined the same way `region_lookup` is.
 
 ## Acknowledgements
 

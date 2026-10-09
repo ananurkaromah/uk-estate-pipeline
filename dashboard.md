@@ -2,10 +2,10 @@
 Built on HM Land Registry Price Paid Data, geographically enriched with ONS and postcodes.io reference data, transformed with dbt (Bronze → Silver → Gold), and orchestrated by Airflow. All figures are sourced exclusively from `gold.fct_property_prices`. Price views use standard (Category A) transactions only, with likely data-entry outliers (over £10M) excluded.
 
 ## Executive Summary & Key Findings
-*(Snapshot as of 2026-10-08; figures dynamically update as the pipeline ingests new monthly data. Geographic scope covers England and Wales, aligning with HM Land Registry jurisdiction).*
+*(Static snapshot as of 2026-10-08. The dashboard itself refreshes as the pipeline loads new months; the figures below do not. Geographic scope is England and Wales, the jurisdiction of HM Land Registry.)*
 
-- **Data scale and quality:** The Gold layer holds **89,133 transactions** (dated up to August 2026) with an exceptional **99.9% geographic match rate**. The national median sale price for standard (Category A), non-outlier transactions stands at **£300,000**. Extreme entries (>£10M) are flagged as potential data-entry errors or bulk sales, preserved for audit traceability, and isolated from price charts.
-- **Regional price differences:** **London** commands the highest valuations in the dataset (detached median prices approaching £1M) alongside a distinct urban housing mix heavily skewed toward flats/maisonettes (about 52% of regional volume). High transaction counts in the **South East** and **North West** primarily reflect regional population size rather than relative market velocity.
+- **Data scale and quality:** The Gold layer holds **89,133 transactions** (dated up to August 2026) with a **99.9% geographic match rate**. The national median sale price for standard (Category A), non-outlier transactions stands at **£300,000**. Extreme entries (>£10M) are flagged as potential data-entry errors or bulk sales, preserved for audit traceability, and isolated from price charts.
+- **Regional price differences:** **London** has the highest prices in the dataset (detached median approaching £1M) and a flat-heavy housing mix (about 52% of its standard transactions). **The South East** and **North West** have the most transactions among the loaded records; these are raw counts, not adjusted for housing stock or population, so they say little about relative market strength.
 - **Growth districts:** Ranked by compound annual growth rate (CAGR) in average price, **PR3** (Preston area) leads at over **11% per year** between 2024 and 2026 (9 transactions in 2024 vs. 55 in 2026; noting 2026 data runs through August). Given the short two-year window and modest initial sample size, this ranking is sensitive to individual property mix shifts. It measures historical appreciation within the loaded data window, not a market forecast.
 
 ## Configuration & Scope
@@ -16,7 +16,7 @@ Built on HM Land Registry Price Paid Data, geographically enriched with ONS and 
   2. Market Trends and Hotspots
   3. Market Segmentation
 * **Formatting:** Price metrics are explicitly formatted as British Pounds (GBP, Currency style).
-* **Source Scope & Data Maturity:** The pipeline ingests HM Land Registry's monthly rolling update files (containing current-month transactions and retrospective amendments) rather than the entire historical archive (1995–present). Consequently, metrics reflect the accumulated data loaded by the pipeline to date, and earlier periods feature thinner volumes until a full historical backfill is executed.
+* **Source Scope & Data Maturity:** The pipeline ingests HM Land Registry's monthly update files (containing current-month transactions and retrospective amendments) rather than the entire historical archive (1995–present). Consequently, metrics reflect the accumulated data loaded by the pipeline to date, and earlier periods feature thinner volumes until a historical backfill is executed.
 
 | Convention | Applied to |
 |---|---|
@@ -139,11 +139,6 @@ LIMIT 10
 ```
 **Visualization:** Bar chart (x: postcode_district, y: cagr_pct)
 
-
-
-**Note on Data Maturity** — Trend and growth views apply minimum transaction-count thresholds to avoid single-sale noise. History is limited to what the pipeline has loaded so far, so these views become more reliable after a historical backfill.
-
-
 ## 3.	Market Segmentation 
 ### 3.1 Median Price by Property Type per Region
 Median transaction price by property type within each region (Category A, non-outlier), shown only for groups with at least 10 transactions (N ≥ 10). 
@@ -226,5 +221,3 @@ FROM counts
 ORDER BY region, pct_of_region DESC
 ```
 **Visualization:** Stacked bar chart (x: region, y: pct_of_region, series: property_type_label)
-
-**Note on Data Maturity** — Trend and growth views apply minimum transaction-count thresholds to avoid single-sale noise. History is limited to what the pipeline has loaded so far, so these views become more reliable after a historical backfill.
