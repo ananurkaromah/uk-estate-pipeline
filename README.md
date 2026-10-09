@@ -6,7 +6,7 @@ A zero-cost, on-premise, end-to-end data engineering pipeline for UK residential
 
 ## Project Overview
 
-This project ingests UK property transaction data and postcode reference data from public, free sources, models it through a bronze → silver → gold medallion architecture using dbt, and  serves the result through a self-hosted BI tool (Metabase). Everything runs locally via Docker Compose — there is no cloud dependency and no recurring cost.
+This project ingests UK property transaction data and postcode reference data from public, free sources, models it through a bronze → silver → gold medallion architecture using dbt, and serves the result through a self-hosted BI tool (Metabase). Everything runs locally via Docker Compose — there is no cloud dependency and no recurring cost.
 
 The pipeline demonstrates a realistic, small-scale version of a production data platform: scheduled ingestion, a raw/unmodified bronze layer, typed and cleaned silver models, a reconciled dimension built from two overlapping geographic sources, explicit handling of source-data quality issues, and an analytics layer a non-technical stakeholder could query through dashboards.
 
@@ -16,7 +16,7 @@ Three public UK datasets are combined:
 
 |    Dataset   |    Publisher    |    Update frequency    |    Access    |
 |--------------|------------------|-----------|---------------------------|
-| Price Paid Data (PPD) | HM Land Registry | Monthly (rolling update) | Free bulk CSV, no auth |
+| Price Paid Data (PPD) | HM Land Registry | Monthly update file (published on the 20th working day) | Free bulk CSV, no auth |
 | Postcode lookup | postcodes.io | Live API | Free bulk lookup API, no key |
 | Postcode directory (NSPL) | Office for National Statistics (ONS) | Periodic (~quarterly) | Free bulk CSV (zip), no key |
 
@@ -31,7 +31,7 @@ This pipeline is designed to answer real property-market questions, not just mov
 
 | # | Business question | Dashboard section |
 |---|---|---|
-| 1 | How have property prices moved over time, month over month and year over year, by region? | 2.1 Monthly price trends |
+| 1 | How have property prices moved month over month, by region? | 2.1 Monthly price trends |
 | 2 | Which postcode districts have shown the strongest historical price appreciation? | 2.2 Top 10 districts by CAGR |
 | 3 | How do prices, transaction activity, and housing mix differ across regions? | 3.1 to 3.3 Market Segmentation |
 | 4 | Can the data be trusted? (freshness, geographic match rate, flagged outliers) | 1. Overview and Data Quality |
@@ -95,7 +95,7 @@ This pipeline is designed to answer real property-market questions, not just mov
 - **Orchestration**: Apache Airflow schedules and coordinates ingestion and transformation tasks
 - **Extract & Load**: raw data lands **as-is** in the bronze schema of a single PostgreSQL instance — no cleaning, no type casting, no filtering at ingestion time. 
   - `postcode_io` and `ons_postcode` (reference/dimension data, not time-series) use **truncate-and-reload** per run.
-  - `land_registry_pp` (transactional fact data) uses **UPSERT on `transaction_id`** (v1.0+), since the source file is a rolling window, not cumulative — truncate-and-reload would cause historical data to be silently discarded between runs (see Version History).
+  - `land_registry_pp` (transactional fact data) uses **UPSERT on `transaction_id`** (v1.0+), since the monthly update file is not a cumulative history — truncate-and-reload would cause historical data to be silently discarded between runs (see Version History).
 - **Transform**: dbt-core reads from bronze and builds:
   - **silver** — cleaned, typed staging models (`stg_land_registry`, `stg_postcode_io`, `stg_ons_postcode`, `stg_region_lookup`, `stg_postcode_master`) — this is the *only* layer where nulls are filtered and types are cast
   - **gold** — analytics-ready marts (`gold.fct_property_prices`, `gold.dim_region`)
@@ -136,12 +136,11 @@ uk-property-pipeline/
 ├── doc/
 │   ├── 01-overview-data-quality.png
 │   ├── 02-monthly-price-trend.png
-│   ├── 03-yoy-price-growth.png
-│   ├── 04-top-10-districts-cagr.png
-│   ├── 05-median-price-by-property-type.png
-│   ├── 06-transaction-volume.png
-│   ├── 07-property-type-mix.png
-│   └── update-architecture.png
+│   ├── 03-top-10-districts-cagr.png
+│   ├── 04-median-price-by-property-type.png
+│   ├── 05-transaction-volume.png
+│   ├── 06-property-type-mix.png
+│   └── architecture.png
 ├── docker/
 │   └── init.sql                     # schemas + grants only -- no table DDL (bronze tables are created dynamically by ingestion scripts)
 ├── airflow/
@@ -200,6 +199,13 @@ docker compose up -d --build
 - **Metabase**: http://localhost:3000 — on first run, complete the setup wizard and connect it to the `postgres` service using the credentials from `.env`; build dashboards against the `gold` schema only. Metabase's setup only needs to be done once — its data persists in a named volume across restarts
 - Trigger the `uk_property_pipeline` DAG from the Airflow UI to run the full ingestion → transform flow. `dbt deps` runs once automatically during `airflow-init`, not as part of every DAG run
 
+## Version History
+
+- **v0.1 — Baseline medallion pipeline.** Bronze layer used truncate-and-reload per ingestion run for all three sources; gold layer (`fct_property_prices`) used full-refresh (`table`) dbt materialization.
+- **v1.0 — Incremental load with deduplication.** Converted Land Registry ingestion (`land_registry.py`) from truncate-and-reload to UPSERT, keyed on `transaction_id`. Converted `fct_property_prices` to an `incremental` dbt materialization with `unique_key='transaction_id'`.
+  **Why:** production-style monitoring across two consecutive monthly runs revealed that the gold table's row count had *decreased* (101,334 → 90,612) instead of accumulating — because HM Land Registry’s monthly update file is not a cumulative history, truncate-and-reload was silently discarding historical transactions every run. This broke the time-series assumption behind the Monthly Trend and YoY Growth dashboards. `postcode_io` and `ons_postcode` (reference/dimension data, not transactional) retain truncate-and-reload, since they don't need historical accumulation.
+- **v1.1 (planned):** Historical backfill from yearly Price Paid Data files, with enrichment scoped to postcodes not resolved by ONS.
+
 ## Future Work & Scalability
 
 - **Historical backfill (planned v1.1):** The pipeline currently loads only HM Land Registry's monthly update file (the current month's transactions plus amendments to earlier releases), so earlier periods are thinly populated and the trend and growth views rely on minimum-sample thresholds. The plan is a one-off backfill from the yearly Price Paid Data files (115–230 MB each, starting with the last five years) through the existing UPSERT path, run outside the monthly DAG in insert-only mode so it never overwrites rows the monthly run has updated. Prerequisites: (1) incremental UPSERT load merged and verified, (2) postcodes.io enrichment restricted to postcodes missing from ONS, since ONS already resolves 99.9% of transactions, and (3) an `is_incremental()` filter on `fct_property_prices` so each run no longer rescans the full history. Afterwards, the Data Maturity notes and the YoY and CAGR views will be re-evaluated.
@@ -207,18 +213,6 @@ docker compose up -d --build
 - **AVM / property valuation**: would require a genuinely new data source with floor-area data (e.g. EPC — Energy Performance Certificates, also free/open) plus address-level matching to Land Registry, since PPD alone has no size data to compute price-per-sqm.
 - **Cloud portability**: the medallion design (bronze/silver/gold schemas, dbt models referencing `source()`/`ref()`) would migrate with minimal change to a managed warehouse if this ever needed to scale past a single on-premise instance.
 - **Monitoring**: add Prometheus + Grafana for pipeline health metrics (task duration, success rate) beyond Airflow's built-in logging.
-
-## Done
-- **Incremental model optimization**: `fct_property_prices` currently re-scans all of `stg_land_registry` on every run before merging by `unique_key` — correct, but not maximally efficient at larger data volumes. Adding an `is_incremental()` filter (e.g. `where transaction_date > (select max(transaction_date) from {{ this }})`) would limit each run to genuinely new/changed rows.
-
-## Version History
-
-- **v0.1 — Baseline medallion pipeline.** Bronze layer used truncate-and-reload per ingestion run for all three sources; gold layer (`fct_property_prices`) used full-refresh (`table`) dbt materialization.
-- **v1.0 — Incremental load with deduplication.** Converted Land Registry ingestion (`land_registry.py`) from truncate-and-reload to UPSERT, keyed on `transaction_id`. Converted `fct_property_prices` to an `incremental` dbt materialization with `unique_key='transaction_id'`.
-  **Why:** production-style monitoring across two consecutive monthly runs revealed that the gold table's row count had *decreased* (101,334 → 90,612) instead of accumulating — because HM Land Registry's source file is a rolling window, not a cumulative file, truncate-and-reload was silently discarding historical transactions
-  every run. This broke the time-series assumption behind the Monthly Trend and YoY Growth dashboards. `postcode_io` and `ons_postcode` (reference/dimension data, not transactional) retain truncate-and-reload, since they don't need historical accumulation.
-- **v1.1 (planned):** Historical backfill from yearly Price Paid Data files, with enrichment scoped to postcodes not resolved by ONS.
-
 
 ## Acknowledgements
 
