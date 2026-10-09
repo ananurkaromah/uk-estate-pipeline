@@ -1,11 +1,12 @@
 # UK Property Market Intelligence Dashboard
-Built on HM Land Registry Price Paid Data, geographically enriched with ONS and postcodes.io reference data, transformed with dbt (bronze → silver → gold) and orchestrated by Airflow. All figures come from gold.fct_property_prices. Price views use standard (Category A) transactions only, with likely data-entry outliers (over £10M) excluded.
+Built on HM Land Registry Price Paid Data, geographically enriched with ONS and postcodes.io reference data, transformed with dbt (Bronze → Silver → Gold), and orchestrated by Airflow. All figures are sourced exclusively from `gold.fct_property_prices`. Price views use standard (Category A) transactions only, with likely data-entry outliers (over £10M) excluded.
 
-**Key findings** (snapshot as of 2026-10-08, figures change as the pipeline loads new months). Coverage is England and Wales, the jurisdiction of HM Land Registry.
+## Executive Summary & Key Findings
+*(Snapshot as of 2026-10-08; figures dynamically update as the pipeline ingests new monthly data. Geographic scope covers England and Wales, aligning with HM Land Registry jurisdiction).*
 
-- **Data scale and quality:** The gold layer holds 89,133 transactions dated up to August 2026, with a 99.9% geographic match rate. The median sale price for standard (Category A), non-outlier transactions is £300,000. Transactions above £10M are flagged as likely data-entry errors or bulk entries, retained for audit traceability, and excluded from price charts.
-- **Regional price differences:** London has the highest prices in the data (detached median close to £1M) and a flat-heavy housing mix (about 52% of its standard transactions). Transaction counts are highest in the South East and North West, which largely reflects region size rather than market strength.
-- **Growth districts:** Ranked by compound annual growth in average price, PR3 leads at over 11% per year between 2024 and 2026 (9 transactions in 2024, 55 in 2026; 2026 data runs only to August). With a two-year window and small samples at the start of it, the ranking is sensitive to individual sales. It reflects historical appreciation, not a forecast.
+- **Data scale and quality:** The Gold layer holds **89,133 transactions** (dated up to August 2026) with an exceptional **99.9% geographic match rate**. The national median sale price for standard (Category A), non-outlier transactions stands at **£300,000**. Extreme entries (>£10M) are flagged as potential data-entry errors or bulk sales, preserved for audit traceability, and isolated from price charts.
+- **Regional price differences:** **London** commands the highest valuations in the dataset (detached median prices approaching £1M) alongside a distinct urban housing mix heavily skewed toward flats/maisonettes (about 52% of regional volume). High transaction counts in the **South East** and **North West** primarily reflect regional population size rather than relative market velocity.
+- **Growth districts:** Ranked by compound annual growth rate (CAGR) in average price, **PR3** (Preston area) leads at over **11% per year** between 2024 and 2026 (9 transactions in 2024 vs. 55 in 2026; noting 2026 data runs through August). Given the short two-year window and modest initial sample size, this ranking is sensitive to individual property mix shifts. It measures historical appreciation within the loaded data window, not a market forecast.
 
 ## Configuration & Scope
 
@@ -15,7 +16,7 @@ Built on HM Land Registry Price Paid Data, geographically enriched with ONS and 
   2. Market Trends and Hotspots
   3. Market Segmentation
 * **Formatting:** Price metrics are explicitly formatted as British Pounds (GBP, Currency style).
-* **Source Scope & Data Maturity:** The pipeline ingests HM Land Registry's monthly rolling update files (containing current-month transactions and retrospective amendments) rather than the entire historical archive (1995–present). Consequently, metrics reflect the accumulated data loaded by the pipeline to date, and earlier periods feature thinner volumes until a full historical backfill is executed..
+* **Source Scope & Data Maturity:** The pipeline ingests HM Land Registry's monthly rolling update files (containing current-month transactions and retrospective amendments) rather than the entire historical archive (1995–present). Consequently, metrics reflect the accumulated data loaded by the pipeline to date, and earlier periods feature thinner volumes until a full historical backfill is executed.
 
 | Convention | Applied to |
 |---|---|
