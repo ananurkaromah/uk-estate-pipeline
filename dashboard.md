@@ -7,11 +7,15 @@ Built on HM Land Registry Price Paid Data, geographically enriched with ONS and 
 - **Regional price differences:** London has the highest prices in the data (detached median close to £1M) and a flat-heavy housing mix (about 52% of its standard transactions). Transaction counts are highest in the South East and North West, which largely reflects region size rather than market strength.
 - **Growth districts:** Ranked by compound annual growth in average price, PR3 leads at over 11% per year between 2024 and 2026 (9 transactions in 2024, 55 in 2026; 2026 data runs only to August). With a two-year window and small samples at the start of it, the ranking is sensitive to individual sales. It reflects historical appreciation, not a forecast.
 
-## Configuration
-- Source: all cards read from `gold.fct_property_prices` only
-- Layout: one dashboard with three tabs (Overview and Data Quality, Market Trends and Hotspots, Market Segmentation)
-- Price columns formatted as GBP (Visualization settings, Style: Currency)
-**Source scope:** The pipeline loads HM Land Registry's monthly update file (the current month's transactions plus updates to earlier releases), not the complete Price Paid history. Counts and averages therefore describe the records loaded so far, not total market activity, and earlier periods are thinly populated.
+## Configuration & Scope
+
+* **Data Source:** All Metabase cards query exclusively from the Gold layer (`gold.fct_property_prices`), ensuring decoupled and business-ready analytics.
+* **Dashboard Layout:** Single dashboard structured into three logical tabs:
+  1. Overview and Data Quality
+  2. Market Trends and Hotspots
+  3. Market Segmentation
+* **Formatting:** Price metrics are explicitly formatted as British Pounds (GBP, Currency style).
+* **Source Scope & Data Maturity:** The pipeline ingests HM Land Registry's monthly rolling update files (containing current-month transactions and retrospective amendments) rather than the entire historical archive (1995–present). Consequently, metrics reflect the accumulated data loaded by the pipeline to date, and earlier periods feature thinner volumes until a full historical backfill is executed..
 
 | Convention | Applied to |
 |---|---|
