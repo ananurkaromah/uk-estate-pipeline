@@ -124,7 +124,7 @@ For complete information regarding metrics, queries, and visualizations, see the
 ## Project Folder Structure
 
 ```
-uk-property-pipeline/
+uk-estate-pipeline/
 ├── .env.example
 ├── .gitignore
 ├── Dockerfile.airflow
@@ -132,6 +132,7 @@ uk-property-pipeline/
 ├── dashboard.md
 ├── requirements.txt
 ├── docker-compose.yml
+├── LICENSE
 ├── doc/
 │   ├── 01-overview-data-quality.png
 │   ├── 02-monthly-price-trend.png
@@ -175,7 +176,7 @@ uk-property-pipeline/
 
 ```bash
 git clone <this-repo>
-cd uk-property-pipeline
+cd uk-estate-pipeline
 cp .env.example .env
 ```
 
@@ -203,20 +204,38 @@ docker compose up -d --build
 - **v0.1 — Baseline medallion pipeline.** Bronze layer used truncate-and-reload per ingestion run for all three sources; gold layer (`fct_property_prices`) used full-refresh (`table`) dbt materialization.
 - **v1.0 — Incremental load with deduplication.** Converted Land Registry ingestion (`land_registry.py`) from truncate-and-reload to UPSERT, keyed on `transaction_id`. Converted `fct_property_prices` to an `incremental` dbt materialization with `unique_key='transaction_id'`.
   **Why:** production-style monitoring across two consecutive monthly runs revealed that the gold table's row count had *decreased* (101,334 → 90,612) instead of accumulating — because HM Land Registry’s monthly update file is not a cumulative history, truncate-and-reload was silently discarding historical transactions every run. This broke the time-series assumption behind the monthly trend and growth views. `postcode_io` and `ons_postcode` (reference/dimension data, not transactional) retain truncate-and-reload, since they don't need historical accumulation.
+  **Verification:** after the migration, two consecutive DAG runs left the gold row count unchanged (no decrease), a duplicate `transaction_id` check returned no rows, and all dbt tests passed.
 - **v1.1 (planned):** Historical backfill from yearly Price Paid Data files, with enrichment scoped to postcodes not resolved by ONS.
 
 ## Future Work & Scalability
 
-- **Historical backfill (planned v1.1):** The pipeline currently loads only HM Land Registry's monthly update file (the current month's transactions plus amendments to earlier releases), so earlier periods are thinly populated and the trend and growth views rely on minimum-sample thresholds. The plan is a one-off backfill from the yearly Price Paid Data files (115–230 MB each, starting with the last five years) through the existing UPSERT path, run outside the monthly DAG in insert-only mode so it never overwrites rows the monthly run has updated. Prerequisites: (1) incremental UPSERT load merged and verified, (2) postcodes.io enrichment restricted to postcodes missing from ONS, since ONS already resolves 99.9% of transactions, and (3) an `is_incremental()` filter on `fct_property_prices` so each run no longer rescans the full history. Afterwards, the Data Maturity notes will be revisited, the CAGR view re-evaluated, and a year-over-year view can be reintroduced.
-- **CI/CD**: add a GitHub Actions workflow running `dbt run`/`dbt test`  against a throwaway Postgres service container on every push.
-- **AVM / property valuation**: would require a genuinely new data source with floor-area data (e.g. EPC — Energy Performance Certificates, also free/open) plus address-level matching to Land Registry, since PPD alone has no size data to compute price-per-sqm.
-- **Cloud portability**: the medallion design (bronze/silver/gold schemas, dbt models referencing `source()`/`ref()`) would migrate with minimal change to a managed warehouse if this ever needed to scale past a single on-premise instance.
-- **Monitoring**: add Prometheus + Grafana for pipeline health metrics (task duration, success rate) beyond Airflow's built-in logging.
+### Planned next
+
+- **CI:** A GitHub Actions workflow that lints the Python code, checks that the ingestion modules import cleanly, validates `docker-compose.yml`, and runs `dbt parse` on every push and pull request. Running on a clean checkout also catches files that work locally but are missing from the repository.
+- **Failure alerts and ingestion hardening:** Airflow failure alerts via webhook. Reference tables are truncated only after the source download has been validated, unexpected NSPL columns fail the task instead of logging a warning, and `max_active_runs=1` prevents overlapping DAG runs.
+- **Automated data quality checks:** dbt tests for failure modes already encountered in this project: a floor on the geographic match rate, a data freshness warning, and `accepted_values` on `ppd_category_type`.
+- **Historical backfill (v1.1):** The pipeline currently loads only HM Land Registry's monthly update file (the current month's transactions plus amendments to earlier releases), so earlier periods are thinly populated and the trend and growth views rely on minimum-sample thresholds. The plan is a one-off backfill from the yearly Price Paid Data files (115–230 MB each, starting with the last five years) through the existing UPSERT path, run outside the monthly DAG in insert-only mode so it never overwrites rows the monthly run has updated. Prerequisites: (1) postcodes.io enrichment restricted to postcodes missing from ONS, since ONS already resolves 99.9% of transactions, and (2) an `is_incremental()` filter on `fct_property_prices` so each run no longer rescans the full history. Afterwards, the Data Maturity notes will be revisited, the CAGR view re-evaluated, and a year-over-year view can be reintroduced.
+- **Pipeline health tracking:** An `ops.pipeline_runs` audit table (rows loaded and duration per task) with a Pipeline Health tab in Metabase, and a row-count regression check that fails a run if a fact table shrinks unexpectedly.
+
+### Known limitations
+
+- **Voided transactions:** Rows with `record_status = 'D'` are filtered out in silver, but the incremental merge in `fct_property_prices` does not remove gold rows that were loaded earlier and later voided. A periodic `--full-refresh` or an explicit delete step would close this gap.
 - **Local authority names:** `admin_district` currently holds ONS local authority district codes for ONS-resolved postcodes. The code-to-name file is bundled in the same NSPL zip (`Documents/`), so it can be loaded and joined the same way `region_lookup` is.
+- **Manual NSPL release tracking:** ONS publishes no permanent download link, so `NSPL_SOURCE_URL` must be updated by hand when a new release appears (roughly quarterly).
+
+### Out of current scope
+
+- **AVM / property valuation:** Would require a genuinely new data source with floor-area data (e.g. EPC, Energy Performance Certificates, also free/open) plus address-level matching to Land Registry, since Price Paid Data alone has no size data to compute price per square metre.
+- **Cloud portability:** The medallion design (bronze/silver/gold schemas, dbt models referencing `source()`/`ref()`) would migrate with minimal change to a managed warehouse if this ever needed to scale past a single on-premise instance.
+- **Heavier monitoring stack:** Prometheus and Grafana would only be warranted with multiple DAGs or shared infrastructure.
 
 ## Acknowledgements
 
-- [HM Land Registry](https://www.gov.uk/government/collections/price-paid-data) — Price Paid Data, released under the Open Government Licence.
-- [Office for National Statistics](https://www.ons.gov.uk/) — NSPL postcode directory, released under the Open Government Licence.
-- [postcodes.io](https://postcodes.io/) — free, open-source postcode lookup API.
+- [HM Land Registry](https://www.gov.uk/government/collections/price-paid-data) — Price Paid Data, contains HM Land Registry data © Crown copyright and database right 2021. This data is licensed under the Open Government Licence v3.0.
+- [Office for National Statistics](https://www.ons.gov.uk/) — NSPL postcode directory. This data is licensed under the Open Government Licence v3.0.
+- [postcodes.io](https://postcodes.io/) — free, open-source postcode lookup API. Source code is available under the MIT Licence.
 - Built with Apache Airflow, dbt, PostgreSQL, and Metabase — all open-source projects.
+
+## License
+
+The code in this repository is released under the [MIT License](LICENSE). The data it processes is published by its owners under their own terms (see Acknowledgements).

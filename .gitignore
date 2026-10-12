@@ -12,9 +12,8 @@ env/
 # --- Environment & Secrets ---
 .env
 .env.local
-profiles.yml
-.user.yml
 .env.*
+!.env.example
 credentials.json
 service-account.json
 

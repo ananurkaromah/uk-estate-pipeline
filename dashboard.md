@@ -221,3 +221,11 @@ FROM counts
 ORDER BY region, pct_of_region DESC
 ```
 **Visualization:** Stacked bar chart (x: region, y: pct_of_region, series: property_type_label)
+
+
+## Acknowledgements
+
+- [HM Land Registry](https://www.gov.uk/government/collections/price-paid-data) — Price Paid Data, contains HM Land Registry data © Crown copyright and database right 2021. This data is licensed under the Open Government Licence v3.0.
+- [Office for National Statistics](https://www.ons.gov.uk/) — NSPL postcode directory. This data is licensed under the Open Government Licence v3.0.
+- [postcodes.io](https://postcodes.io/) — free, open-source postcode lookup API. Source code is available under the MIT Licence.
+- Built with Apache Airflow, dbt, PostgreSQL, and Metabase — all open-source projects.
