@@ -229,8 +229,6 @@ docker compose up -d --build
 - **Cloud portability:** The medallion design (bronze/silver/gold schemas, dbt models referencing `source()`/`ref()`) would migrate with minimal change to a managed warehouse if this ever needed to scale past a single on-premise instance.
 - **Heavier monitoring stack:** Prometheus and Grafana would only be warranted with multiple DAGs or shared infrastructure.
 
-## Acknowledgements
-
 ## Data Attributions & Licences
 
 This project uses the public data below. Only aggregated figures are published; no individual addresses are shown.
