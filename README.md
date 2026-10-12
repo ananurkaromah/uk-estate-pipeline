@@ -231,10 +231,34 @@ docker compose up -d --build
 
 ## Acknowledgements
 
-- [HM Land Registry](https://www.gov.uk/government/collections/price-paid-data) — Price Paid Data, contains HM Land Registry data © Crown copyright and database right 2021. This data is licensed under the Open Government Licence v3.0.
-- [Office for National Statistics](https://www.ons.gov.uk/) — NSPL postcode directory. This data is licensed under the Open Government Licence v3.0.
-- [postcodes.io](https://postcodes.io/) — free, open-source postcode lookup API. Source code is available under the MIT Licence.
-- Built with Apache Airflow, dbt, PostgreSQL, and Metabase — all open-source projects.
+## Data Attributions & Licences
+
+This project uses the public data below. Only aggregated figures are published; no individual addresses are shown.
+
+### HM Land Registry: Price Paid Data
+
+- Contains HM Land Registry data © Crown copyright and database right 2021. This data is licensed under the Open Government Licence v3.0.
+- The address fields in Price Paid Data are processed against Ordnance Survey AddressBase Premium, which incorporates Royal Mail's PAF database. Royal Mail and Ordnance Survey permit this address data to be used for personal and non-commercial use. This is a non-commercial portfolio project.
+
+### Office for National Statistics: NSPL Postcode Directory
+
+- Source: Office for National Statistics licensed under the Open Government Licence v.3.0.
+- Contains OS data © Crown copyright and database right 2026.
+- Contains Royal Mail data © Royal Mail copyright and database right 2026.
+- The NSPL also contains Northern Ireland postcodes (starting with "BT"), which are subject to separate Land and Property Services terms; commercial use requires a separate licence. These postcodes are present in the downloaded file but are not used in any published figure, as Price Paid Data covers England and Wales only.
+
+### postcodes.io
+
+- The postcodes.io software is available under the MIT Licence.
+- Its Great Britain postcode data may be used under the terms of the OS OpenData licence, and its Northern Ireland data (starting with "BT") under the ONSPD licence (free for non-commercial use). As stated by postcodes.io:
+  - Contains Ordnance Survey data © Crown copyright and database right 2024
+  - Contains Royal Mail data © Royal Mail copyright and database right 2024
+  - Contains National Statistics data © Crown copyright and database right 2024
+  - Contains NRS data © Crown copyright and database right 2024
+
+### Software
+
+Built with Apache Airflow, dbt, PostgreSQL, and Metabase, all open-source projects.
 
 ## License
 
