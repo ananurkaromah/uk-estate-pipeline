@@ -12,10 +12,9 @@ import tempfile
 
 import pandas as pd
 import requests
+from db import ensure_schema, get_engine
 from sqlalchemy import MetaData, Table, inspect
 from sqlalchemy.dialects.postgresql import insert as pg_insert
-
-from db import ensure_schema, get_engine
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)

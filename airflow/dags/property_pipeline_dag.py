@@ -12,13 +12,13 @@ Sources:
 """
 from datetime import datetime
 
-from airflow import DAG
 from airflow.operators.bash import BashOperator
 from airflow.operators.python import PythonOperator
-
 from land_registry import run as run_land_registry
 from ons_postcode import run as run_ons_postcode
 from postcodes import run as run_postcodes
+
+from airflow import DAG
 
 DBT_DIR = "/opt/airflow/dbt"
 

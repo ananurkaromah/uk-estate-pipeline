@@ -5,9 +5,8 @@ import zipfile
 
 import pandas as pd
 import requests
-from sqlalchemy import inspect
-
 from db import ensure_schema, get_engine
+from sqlalchemy import inspect
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
