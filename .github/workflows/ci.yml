@@ -65,8 +65,8 @@ jobs:
 
       - name: dbt is the classic 1.8.x release
         run: |
-          docker run --rm uk-estate-airflow:ci dbt --version | grep -E "installed: 1\.8\."
-      
+          docker run --rm --entrypoint dbt uk-estate-airflow:ci --version 2>&1 | grep -E "installed: 1\.8\."
+
       - name: Ingestion modules and the DAG import cleanly
         run: |
           docker run --rm \
