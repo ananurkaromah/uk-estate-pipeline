@@ -1,0 +1,77 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  static-checks:
+    name: Static checks
+    runs-on: ubuntu-latest
+    env:
+      # Dummy, non-secret values: dbt parse only needs the profile to resolve.
+      POSTGRES_USER: ci
+      POSTGRES_PASSWORD: ci
+      POSTGRES_DB: ci
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: requirements.txt
+
+      - name: Install ruff and the pinned dbt versions
+        run: pip install ruff $(grep '^dbt-' requirements.txt)
+
+      - name: Lint Python
+        run: ruff check ingestion airflow
+
+      - name: Python syntax check
+        run: python -m compileall -q ingestion airflow
+
+      - name: Validate docker-compose.yml
+        run: docker compose --env-file .env.example config -q
+
+      - name: Install dbt packages
+        working-directory: dbt
+        run: dbt deps --profiles-dir .
+
+      - name: Parse dbt project
+        working-directory: dbt
+        run: dbt parse --profiles-dir .
+
+  docker-image:
+    name: Airflow image builds and imports
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build the Airflow image
+        run: docker build -f Dockerfile.airflow -t uk-estate-airflow:ci .
+
+      - name: Airflow still imports with the pinned dependencies
+        run: docker run --rm uk-estate-airflow:ci python -c "import airflow.models; print('airflow ok')"
+
+      - name: dbt is the classic 1.8.x release
+        run: |
+          docker run --rm uk-estate-airflow:ci dbt --version | grep -E "installed: 1\.8\."
+      
+      - name: Ingestion modules and the DAG import cleanly
+        run: |
+          docker run --rm \
+            -e PYTHONPATH=/opt/airflow/ingestion \
+            -v "$PWD/ingestion:/opt/airflow/ingestion:ro" \
+            -v "$PWD/airflow/dags:/opt/airflow/dags:ro" \
+            uk-estate-airflow:ci \
+            python /opt/airflow/dags/property_pipeline_dag.py
