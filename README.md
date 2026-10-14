@@ -1,4 +1,5 @@
 # UK Property Data Pipeline (Estate)
+![CI](https://github.com/ananurkaromah/uk-estate-pipeline/actions/workflows/ci.yml/badge.svg)
 
 A zero-cost, on-premise, end-to-end data engineering pipeline for UK residential property price data — built to demonstrate medallion architecture, orchestration, transformation-as-code, data quality handling, and BI serving using a fully open-source stack.
 
@@ -112,8 +113,8 @@ This pipeline is designed to answer real property-market questions, not just mov
 | Storage / warehouse | PostgreSQL 16 | Schema-based medallion separation (bronze/silver/gold) |
 | Transformation | dbt-core 1.8.2 + dbt-postgres 1.8.2 | `fct_property_prices` uses incremental materialization with `unique_key='transaction_id'` (v1.0+) |
 | BI / serving | Metabase, pinned to `v0.58.34` (LTS, security support through Feb 2027) | Chosen deliberately after checking metabase.com/version-support — not `latest`, for reproducibility |
-| Python deps | pandas 2.1.4, SQLAlchemy 1.4.51 (both pinned together — pandas ≥2.2 requires SQLAlchemy ≥2.0, which conflicts with dbt 1.8.x's SQLAlchemy <2.0 requirement) | |
-
+| Python deps | pandas 2.1.4, SQLAlchemy 1.4.51 (both pinned together: pandas ≥2.2 requires SQLAlchemy ≥2.0, which conflicts with Apache Airflow 2.9.3's SQLAlchemy <2.0 requirement) | |
+| CI | GitHub Actions | Lint, compose validation, `dbt parse`, and Airflow image build/import smoke tests on every push and pull request |
 ## Dashboards
 
 ![Dashboard overview](doc/01-overview-data-quality.png)
@@ -212,7 +213,6 @@ docker compose up -d --build
 
 ### Planned next
 
-- **CI:** A GitHub Actions workflow that lints the Python code, checks that the ingestion modules import cleanly, validates `docker-compose.yml`, and runs `dbt parse` on every push and pull request. Running on a clean checkout also catches files that work locally but are missing from the repository.
 - **Failure alerts and ingestion hardening:** Airflow failure alerts via webhook. Reference tables are truncated only after the source download has been validated, unexpected NSPL columns fail the task instead of logging a warning, and `max_active_runs=1` prevents overlapping DAG runs.
 - **Automated data quality checks:** dbt tests for failure modes already encountered in this project: a floor on the geographic match rate, a data freshness warning, and `accepted_values` on `ppd_category_type`.
 - **Historical backfill (v1.1):** The pipeline currently loads only HM Land Registry's monthly update file (the current month's transactions plus amendments to earlier releases), so earlier periods are thinly populated and the trend and growth views rely on minimum-sample thresholds. The plan is a one-off backfill from the yearly Price Paid Data files (115–230 MB each, starting with the last five years) through the existing UPSERT path, run outside the monthly DAG in insert-only mode so it never overwrites rows the monthly run has updated. Prerequisites: (1) postcodes.io enrichment restricted to postcodes missing from ONS, since ONS already resolves 99.9% of transactions, and (2) an `is_incremental()` filter on `fct_property_prices` so each run no longer rescans the full history. Afterwards, the Data Maturity notes will be revisited, the CAGR view re-evaluated, and a year-over-year view can be reintroduced.
