@@ -1,3 +1,10 @@
+"""Enrich distinct postcodes from bronze.land_registry_pp using postcodes.io
+(free bulk lookup, no key) into bronze.postcode_io.
+
+Results are collected in memory first, then the table is replaced in one
+transaction, so a failure midway through the API calls leaves the previous
+table untouched.
+"""
 import logging
 
 import pandas as pd
@@ -49,23 +56,17 @@ def run():
     total_batches = (len(postcodes) + BATCH_SIZE - 1) // BATCH_SIZE
     logger.info("Looking up %d distinct postcodes across %d batches", len(postcodes), total_batches)
 
-    if inspector.has_table(TABLE_NAME, schema=SCHEMA):
-        with engine.begin() as conn:
-            conn.exec_driver_sql(f"TRUNCATE TABLE {SCHEMA}.{TABLE_NAME}")
-        logger.info("Truncated existing %s.%s", SCHEMA, TABLE_NAME)
-
     session = _build_session()
-    total_resolved = 0
+    all_rows = []
 
     for batch_num, batch in enumerate(_chunks(postcodes, BATCH_SIZE), start=1):
         resp = session.post(BULK_LOOKUP_URL, json={"postcodes": batch}, timeout=REQUEST_TIMEOUT)
         resp.raise_for_status()
 
-        rows = []
         for item in resp.json().get("result", []):
             result = item.get("result")
             if result:
-                rows.append({
+                all_rows.append({
                     "postcode": result["postcode"],
                     "latitude": result["latitude"],
                     "longitude": result["longitude"],
@@ -73,19 +74,23 @@ def run():
                     "admin_district": result.get("admin_district"),
                 })
 
-        if rows:
-            pd.DataFrame(rows).to_sql(
-                TABLE_NAME, engine, schema=SCHEMA, if_exists="append", index=False
-            )
-            total_resolved += len(rows)
-
         if batch_num % LOG_EVERY == 0 or batch_num == total_batches:
             logger.info(
                 "Processed batch %d/%d (%d postcodes resolved so far)",
-                batch_num, total_batches, total_resolved,
+                batch_num, total_batches, len(all_rows),
             )
 
-    logger.info("Finished: resolved %d/%d postcodes into %s.%s", total_resolved, len(postcodes), SCHEMA, TABLE_NAME)
+    if postcodes and not all_rows:
+        raise ValueError("postcodes.io returned no results; keeping the existing table.")
+
+    with engine.begin() as conn:
+        if inspector.has_table(TABLE_NAME, schema=SCHEMA):
+            conn.exec_driver_sql(f"TRUNCATE TABLE {SCHEMA}.{TABLE_NAME}")
+        pd.DataFrame(all_rows).to_sql(
+            TABLE_NAME, conn, schema=SCHEMA, if_exists="append", index=False, chunksize=10_000
+        )
+
+    logger.info("Finished: resolved %d/%d postcodes into %s.%s", len(all_rows), len(postcodes), SCHEMA, TABLE_NAME)
 
 
 if __name__ == "__main__":

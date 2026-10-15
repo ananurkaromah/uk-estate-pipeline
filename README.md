@@ -92,9 +92,9 @@ This pipeline is designed to answer real property-market questions, not just mov
 ![architecture](doc/architecture.png)
 
 - **Sources**: HM Land Registry Price Paid Data (CSV), postcodes.io (REST API/JSON), ONS Postcode Directory/NSPL (CSV in zip)
-- **Orchestration**: Apache Airflow schedules and coordinates ingestion and transformation tasks
+- **Orchestration**: Apache Airflow schedules and coordinates ingestion and transformation tasks. Task failures, after retries are exhausted, post to a Discord webhook. `max_active_runs=1` prevents overlapping runs.
 - **Extract & Load**: raw data lands **as-is** in the bronze schema of a single PostgreSQL instance — no cleaning, no type casting, no filtering at ingestion time. 
-  - `postcode_io` and `ons_postcode` (reference/dimension data, not time-series) use **truncate-and-reload** per run.
+  - `postcode_io` and `ons_postcode` (reference/dimension data, not time-series) use **truncate-and-reload** per run, where reference tables are replaced in a single transaction, and input NSPL data is validated before touching existing data.
   - `land_registry_pp` (transactional fact data) uses **UPSERT on `transaction_id`** (v1.0+), since the monthly update file is not a cumulative history — truncate-and-reload would cause historical data to be silently discarded between runs (see Version History).
 - **Transform**: dbt-core reads from bronze and builds:
   - **silver** — cleaned, typed staging models (`stg_land_registry`, `stg_postcode_io`, `stg_ons_postcode`, `stg_region_lookup`, `stg_postcode_master`) — this is the *only* layer where nulls are filtered and types are cast
@@ -189,6 +189,7 @@ Fill in `.env`:
   `python3 -c "import secrets; print(secrets.token_hex(16))"`
 - `AIRFLOW_UID` — set to your host user's UID: `echo "AIRFLOW_UID=$(id -u)" >> .env`
 - `NSPL_SOURCE_URL` — current NSPL download link from the [ONS Open Geography Portal](https://geoportal.statistics.gov.uk) (this link changes between releases and points to a `.zip`, not a raw CSV)
+- `ALERT_WEBHOOK_URL` — (optional, Discord webhook for task failure alerts )
 
 Build and start everything:
 
@@ -203,10 +204,14 @@ docker compose up -d --build
 ## Version History
 
 - **v0.1 — Baseline medallion pipeline.** Bronze layer used truncate-and-reload per ingestion run for all three sources; gold layer (`fct_property_prices`) used full-refresh (`table`) dbt materialization.
+
 - **v1.0 — Incremental load with deduplication.** Converted Land Registry ingestion (`land_registry.py`) from truncate-and-reload to UPSERT, keyed on `transaction_id`. Converted `fct_property_prices` to an `incremental` dbt materialization with `unique_key='transaction_id'`.
   **Why:** production-style monitoring across two consecutive monthly runs revealed that the gold table's row count had *decreased* (101,334 → 90,612) instead of accumulating — because HM Land Registry’s monthly update file is not a cumulative history, truncate-and-reload was silently discarding historical transactions every run. This broke the time-series assumption behind the monthly trend and growth views. `postcode_io` and `ons_postcode` (reference/dimension data, not transactional) retain truncate-and-reload, since they don't need historical accumulation.
   **Verification:** after the migration, two consecutive DAG runs left the gold row count unchanged (no decrease), a duplicate `transaction_id` check returned no rows, and all dbt tests passed.
+
 - **v1.0.1 — Reproducibility fixes and CI.** Committed `dbt/profiles.yml` (previously git-ignored, which broke fresh clones), moved secrets to `.env`, bound published ports to localhost, removed the hardcoded database user from `init.sql`, and corrected the clone instructions. Added a GitHub Actions workflow that lints the Python code, validates `docker-compose.yml`, runs `dbt parse`, and builds the Airflow image with import smoke tests on every push and pull request.
+
+- **Unreleased (v1.0.2 in progress):** Discord failure alerts via `on_failure_callback`, `max_active_runs=1`, atomic replacement of reference tables (TRUNCATE and load in one transaction), and input validation for the NSPL download.
 
 - **v1.1 (planned):** Historical backfill from yearly Price Paid Data files, with enrichment scoped to postcodes not resolved by ONS.
 
@@ -214,7 +219,6 @@ docker compose up -d --build
 
 ### Planned next
 
-- **Failure alerts and ingestion hardening:** Airflow failure alerts via webhook. Reference tables are truncated only after the source download has been validated, unexpected NSPL columns fail the task instead of logging a warning, and `max_active_runs=1` prevents overlapping DAG runs.
 - **Automated data quality checks:** dbt tests for failure modes already encountered in this project: a floor on the geographic match rate, a data freshness warning, and `accepted_values` on `ppd_category_type`.
 - **Historical backfill (v1.1):** The pipeline currently loads only HM Land Registry's monthly update file (the current month's transactions plus amendments to earlier releases), so earlier periods are thinly populated and the trend and growth views rely on minimum-sample thresholds. The plan is a one-off backfill from the yearly Price Paid Data files (115–230 MB each, starting with the last five years) through the existing UPSERT path, run outside the monthly DAG in insert-only mode so it never overwrites rows the monthly run has updated. Prerequisites: (1) postcodes.io enrichment restricted to postcodes missing from ONS, since ONS already resolves 99.9% of transactions, and (2) an `is_incremental()` filter on `fct_property_prices` so each run no longer rescans the full history. Afterwards, the Data Maturity notes will be revisited, the CAGR view re-evaluated, and a year-over-year view can be reintroduced.
 - **Pipeline health tracking:** An `ops.pipeline_runs` audit table (rows loaded and duration per task) with a Pipeline Health tab in Metabase, and a row-count regression check that fails a run if a fact table shrinks unexpectedly.
