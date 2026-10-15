@@ -20,9 +20,15 @@ from postcodes import run as run_postcodes
 
 from airflow import DAG
 
+from alerts import notify_failure
+
 DBT_DIR = "/opt/airflow/dbt"
 
-default_args = {"owner": "data-eng", "retries": 2}
+default_args = {
+    "owner": "data-eng", 
+    "retries": 2,
+    "on_failure_callback": notify_failure,  # send alerts to Discord
+}
 
 with DAG(
     dag_id="uk_property_pipeline",

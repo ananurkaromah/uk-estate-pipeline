@@ -25,6 +25,7 @@ x-airflow-common: &airflow-common
     _AIRFLOW_WWW_USER_LASTNAME: "User"
     _AIRFLOW_WWW_USER_EMAIL: "admin@estate-pipe.local"
     PYTHONPATH: /opt/airflow/ingestion
+    ALERT_WEBHOOK_URL: "${ALERT_WEBHOOK_URL:-}"
 
 
   volumes:
