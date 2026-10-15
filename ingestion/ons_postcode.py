@@ -1,3 +1,10 @@
+"""Ingest the ONS Postcode Directory (NSPL) into bronze.ons_postcode.
+
+The NSPL is published as a zip archive. The download is validated (expected
+columns, region lookup file, a row-count floor) and the reference tables are
+replaced inside a single transaction, so a failed or truncated download never
+leaves them empty or half-loaded.
+"""
 import logging
 import os
 import tempfile
@@ -5,8 +12,9 @@ import zipfile
 
 import pandas as pd
 import requests
-from db import ensure_schema, get_engine
 from sqlalchemy import inspect
+
+from db import ensure_schema, get_engine
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -34,6 +42,44 @@ SCHEMA = "bronze"
 TABLE_NAME = "ons_postcode"
 LOOKUP_TABLE_NAME = "region_lookup"
 CHUNK_SIZE = 50_000
+MIN_EXPECTED_ROWS = 1_000_000  # the full UK file has ~2.7M rows
+
+
+def _find_data_csv(archive: zipfile.ZipFile) -> str:
+    """Combined UK file only: not multi_csv/ (different header format) and
+    not Documents/ (unrelated lookup tables)."""
+    csv_names = [
+        n for n in archive.namelist()
+        if n.lower().endswith(".csv")
+        and n.lower().startswith("data/")
+        and "multi_csv" not in n.lower()
+    ]
+    if not csv_names:
+        raise ValueError(f"No combined NSPL CSV found in zip. Contents: {archive.namelist()}")
+    return csv_names[0]
+
+
+def _read_region_lookup(archive: zipfile.ZipFile) -> pd.DataFrame:
+    candidates = [
+        n for n in archive.namelist()
+        if "rgn region names and codes" in n.lower() and n.lower().endswith(".csv")
+    ]
+    if not candidates:
+        raise ValueError(
+            "Region lookup file not found in the NSPL zip; regions would fall back to raw ONS codes."
+        )
+    with archive.open(candidates[0]) as f:
+        lookup_df = pd.read_csv(f, encoding="utf-8-sig")
+
+    code_col = next((c for c in lookup_df.columns if c.upper().endswith("CD")), None)
+    name_col = next((c for c in lookup_df.columns if c.upper().endswith("NM")), None)
+    if not (code_col and name_col):
+        raise ValueError(
+            f"Could not detect code/name columns in the region lookup file: {lookup_df.columns.tolist()}"
+        )
+    return lookup_df[[code_col, name_col]].rename(
+        columns={code_col: "region_code", name_col: "region_name"}
+    )
 
 
 def run():
@@ -48,14 +94,7 @@ def run():
     ensure_schema(engine, SCHEMA)
     inspector = inspect(engine)
 
-    if inspector.has_table(TABLE_NAME, schema=SCHEMA):
-        with engine.begin() as conn:
-            conn.exec_driver_sql(f"TRUNCATE TABLE {SCHEMA}.{TABLE_NAME}")
-        logger.info("Truncated existing %s.%s", SCHEMA, TABLE_NAME)
-
     logger.info("Downloading ONS Postcode Directory from %s", NSPL_SOURCE_URL)
-    total_rows = 0
-
     with requests.get(NSPL_SOURCE_URL, stream=True, timeout=300) as resp:
         resp.raise_for_status()
         with tempfile.NamedTemporaryFile(suffix=".zip") as tmp:
@@ -64,66 +103,51 @@ def run():
             tmp.flush()
 
             with zipfile.ZipFile(tmp.name) as archive:
-                # Combined UK file only -- not multi_csv/ (different header
-                # format) and not Documents/ (unrelated lookup tables).
-                csv_names = [
-                    n for n in archive.namelist()
-                    if n.lower().endswith(".csv")
-                    and n.lower().startswith("data/")
-                    and "multi_csv" not in n.lower()
-                ]
-                if not csv_names:
-                    raise ValueError(f"No combined NSPL CSV found in zip. Contents: {archive.namelist()}")
+                csv_name = _find_data_csv(archive)
+                logger.info("Validating %s", csv_name)
 
-                csv_name = csv_names[0]
-                logger.info("Streaming %s from NSPL zip in chunks", csv_name)
-
+                # Validate everything BEFORE touching the existing tables.
                 with archive.open(csv_name) as f:
-                    for chunk in pd.read_csv(f, low_memory=False, chunksize=CHUNK_SIZE):
-                        chunk = chunk.rename(columns=COLUMN_MAP)
+                    header = set(pd.read_csv(f, nrows=0).columns)
+                missing = [c for c in COLUMN_MAP if c not in header]
+                if missing:
+                    raise ValueError(
+                        f"NSPL file is missing expected columns: {missing}. "
+                        "The release format may have changed."
+                    )
+                lookup_df = _read_region_lookup(archive)
 
-                        missing = [c for c in BRONZE_COLUMNS if c not in chunk.columns]
-                        if missing:
-                            logger.warning("NSPL export missing expected columns: %s", missing)
-                        chunk = chunk[[c for c in BRONZE_COLUMNS if c in chunk.columns]]
+                total_rows = 0
+                # Single transaction: TRUNCATE + load are rolled back together
+                # if anything below fails, leaving the previous data intact.
+                with engine.begin() as conn:
+                    if inspector.has_table(TABLE_NAME, schema=SCHEMA):
+                        conn.exec_driver_sql(f"TRUNCATE TABLE {SCHEMA}.{TABLE_NAME}")
 
-                        chunk.to_sql(
-                            TABLE_NAME,
-                            engine,
-                            schema=SCHEMA,
-                            if_exists="append",
-                            index=False,
+                    with archive.open(csv_name) as f:
+                        for chunk in pd.read_csv(f, low_memory=False, chunksize=CHUNK_SIZE):
+                            chunk = chunk.rename(columns=COLUMN_MAP)[BRONZE_COLUMNS]
+                            chunk.to_sql(
+                                TABLE_NAME, conn, schema=SCHEMA, if_exists="append", index=False
+                            )
+                            total_rows += len(chunk)
+                            logger.info("Loaded chunk (%d rows so far)", total_rows)
+
+                    if total_rows < MIN_EXPECTED_ROWS:
+                        raise ValueError(
+                            f"Only {total_rows} NSPL rows loaded (expected at least "
+                            f"{MIN_EXPECTED_ROWS}). Wrong file or truncated download; rolling back."
                         )
-                        total_rows += len(chunk)
-                        logger.info("Loaded chunk (%d rows so far)", total_rows)
 
-                # Region code -> name lookup, bundled in same zip.
-                lookup_candidates = [
-                    n for n in archive.namelist()
-                    if "rgn region names and codes" in n.lower() and n.lower().endswith(".csv")
-                ]
-                if lookup_candidates:
-                    lookup_name = lookup_candidates[0]
-                    logger.info("Loading region code->name lookup from %s", lookup_name)
-                    with archive.open(lookup_name) as f:
-                        lookup_df = pd.read_csv(f, encoding="utf-8-sig")
-
-                    code_col = next((c for c in lookup_df.columns if c.upper().endswith("CD")), None)
-                    name_col = next((c for c in lookup_df.columns if c.upper().endswith("NM")), None)
-
-                    if code_col and name_col:
-                        lookup_df = lookup_df[[code_col, name_col]].rename(
-                            columns={code_col: "region_code", name_col: "region_name"}
-                        )
-                        if inspector.has_table(LOOKUP_TABLE_NAME, schema=SCHEMA):
-                            with engine.begin() as conn:
-                                conn.exec_driver_sql(f"TRUNCATE TABLE {SCHEMA}.{LOOKUP_TABLE_NAME}")
-                        lookup_df.to_sql(LOOKUP_TABLE_NAME, engine, schema=SCHEMA, if_exists="append", index=False)
-                        logger.info("Loaded %d region code->name mappings into %s.%s", len(lookup_df), SCHEMA, LOOKUP_TABLE_NAME)
-                    else:
-                        logger.warning("Could not detect code/name columns in region lookup file: %s", lookup_df.columns.tolist())
-                else:
-                    logger.warning("Region lookup file not found in NSPL zip; region will stay as raw codes")
+                    if inspector.has_table(LOOKUP_TABLE_NAME, schema=SCHEMA):
+                        conn.exec_driver_sql(f"TRUNCATE TABLE {SCHEMA}.{LOOKUP_TABLE_NAME}")
+                    lookup_df.to_sql(
+                        LOOKUP_TABLE_NAME, conn, schema=SCHEMA, if_exists="append", index=False
+                    )
+                    logger.info(
+                        "Loaded %d region code->name mappings into %s.%s",
+                        len(lookup_df), SCHEMA, LOOKUP_TABLE_NAME,
+                    )
 
     logger.info("Finished loading %d rows into %s.%s", total_rows, SCHEMA, TABLE_NAME)
 
