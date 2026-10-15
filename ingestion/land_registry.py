@@ -1,4 +1,4 @@
-"""Ingest UK HM Land Registry Price Paid Data (monthly rolling CSV) into
+"""Ingest UK HM Land Registry Price Paid Data (monthly update CSV) into
 bronze, using UPSERT (not truncate) so transaction history accumulates
 across runs instead of being replaced every time.
 
@@ -33,6 +33,8 @@ COLUMNS = [
 SCHEMA = "bronze"
 TABLE_NAME = "land_registry_pp"
 CHUNK_SIZE = 50_000
+# Minimum expected rows based on typical monthly updates (conservative estimate)
+MIN_EXPECTED_ROWS = 10_000
 
 
 def ensure_table(engine):
@@ -111,6 +113,12 @@ def run():
                 upsert_chunk(engine, chunk)
                 total_rows += len(chunk)
                 logger.info("Upserted chunk (%d rows processed so far)", total_rows)
+
+        if total_rows < MIN_EXPECTED_ROWS:
+            raise ValueError(
+                f"Only {total_rows} rows in the Land Registry file (expected at least "
+                f"{MIN_EXPECTED_ROWS}); the download may be incomplete."
+            )
 
     logger.info("Finished upserting %d rows into %s.%s (existing table grows/updates, not replaced)", total_rows, SCHEMA, TABLE_NAME)
 
