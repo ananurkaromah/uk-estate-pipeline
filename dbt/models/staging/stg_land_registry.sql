@@ -2,16 +2,16 @@
 -- record_status = 'D' (Delete) rows are kept in bronze for audit
 -- traceability, but filtered out here -- they represent transactions
 -- that have been formally voided/withdrawn by HM Land Registry.
-with source as (
-    select * from {{ source('bronze', 'land_registry_pp') }}
+WITH source AS (
+    SELECT * FROM {{ source('bronze', 'land_registry_pp') }}
 ),
 
-cleaned as (
-    select
+cleaned AS (
+    SELECT
         transaction_id,
-        cast(price as numeric) as price,
-        cast(date_of_transfer as date) as transaction_date,
-        upper(trim(postcode)) as postcode,
+        cast(price AS NUMERIC(10, 2)) AS price,
+        cast(date_of_transfer AS date) AS transaction_date,
+        upper(trim(postcode)) AS postcode,
         property_type,
         old_new,
         duration,
@@ -19,10 +19,10 @@ cleaned as (
         district,
         county,
         ppd_category_type
-    from source
-    where price is not null
-      and postcode is not null
-      and record_status != 'D'
+    FROM source
+    WHERE price IS NOT NULL
+       AND postcode IS NOT NULL
+       AND record_status != 'D'
 )
 
-select distinct * from cleaned
+SELECT DISTINCT * FROM cleaned

@@ -7,7 +7,20 @@ models:
       - name: transaction_id
         tests: [unique, not_null]
       - name: price
+        tests:
+          - not_null
+          - dbt_utils.accepted_range:
+              min_value: 1
+      - name: transaction_date
         tests: [not_null]
+      - name: ppd_category_type
+        tests:
+          - accepted_values:
+              values: ["A", "B"]
+      - name: property_type
+        tests:
+          - accepted_values:
+              values: ["D", "S", "T", "F", "O"]
 
   - name: dim_region
     description: Distinct regions/admin districts for dashboard filters (gold).

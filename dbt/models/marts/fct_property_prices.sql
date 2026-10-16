@@ -9,12 +9,12 @@
 -- Incremental + unique_key='transaction_id' means dbt merges on
 -- transaction_id across runs -- new transactions get inserted, existing
 -- ones get updated in place -- instead of a full table rebuild every run.
-select
+SELECT
     lr.transaction_id,
     lr.price,
-    lr.price > 10000000 as is_price_outlier,
+    lr.price > 10000000 AS is_price_outlier,
     lr.transaction_date,
-    date_trunc('month', lr.transaction_date) as transaction_month,
+    date_trunc('month', lr.transaction_date) AS transaction_month,
     lr.property_type,
     lr.ppd_category_type,
     lr.postcode,
@@ -22,7 +22,7 @@ select
     pc.admin_district,
     pc.latitude,
     pc.longitude,
-    pc.source as postcode_source
-from {{ ref('stg_land_registry') }} as lr
-left join {{ ref('stg_postcode_master') }} as pc
-    on lr.postcode = pc.postcode
+    pc.source AS postcode_source
+FROM {{ ref('stg_land_registry') }} AS lr
+LEFT JOIN {{ ref('stg_postcode_master') }} AS pc
+    ON lr.postcode = pc.postcode

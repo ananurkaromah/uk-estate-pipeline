@@ -1,28 +1,28 @@
-with ons as (
-    select * from {{ ref('stg_ons_postcode') }}
+WITH ons AS (
+    SELECT * FROM {{ ref('stg_ons_postcode') }}
 ),
 
-fallback as (
-    select * from {{ ref('stg_postcode_io') }}
+fallback AS (
+    SELECT * FROM {{ ref('stg_postcode_io') }}
 ),
 
-region_names as (
-    select * from {{ ref('stg_region_lookup') }}
+region_names AS (
+    SELECT * FROM {{ ref('stg_region_lookup') }}
 ),
 
-combined as (
-    select
-        coalesce(ons.postcode, fallback.postcode) as postcode,
-        coalesce(ons.latitude, fallback.latitude) as latitude,
-        coalesce(ons.longitude, fallback.longitude) as longitude,
-        coalesce(rl.region_name, fallback.region, case ons.region when 'W99999999' then 'Wales' else ons.region end) as region,
-        coalesce(ons.admin_district, fallback.admin_district) as admin_district,
-        case when ons.postcode is not null then 'ons' else 'postcodes_io' end as source
-    from ons
-    full outer join fallback
-        on ons.postcode = fallback.postcode
-    left join region_names as rl
-        on ons.region = rl.region_code
+combined AS (
+    SELECT
+        coalesce(ons.postcode, fallback.postcode) AS postcode,
+        coalesce(ons.latitude, fallback.latitude) AS latitude,
+        coalesce(ons.longitude, fallback.longitude) AS longitude,
+        coalesce(rl.region_name, fallback.region, CASE ons.region WHEN 'W99999999' THEN 'Wales' ELSE ons.region END) AS region,
+        coalesce(ons.admin_district, fallback.admin_district) AS admin_district,
+        CASE WHEN ons.postcode IS NOT NULL THEN 'ons' ELSE 'postcodes_io' END AS source
+    FROM ons
+    FULL OUTER JOIN fallback
+        ON ons.postcode = fallback.postcode
+    LEFT JOIN region_names AS rl
+        ON ons.region = rl.region_code
 )
 
-select * from combined
+SELECT * FROM combined
