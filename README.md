@@ -115,6 +115,8 @@ This pipeline is designed to answer real property-market questions, not just mov
 | BI / serving | Metabase, pinned to `v0.58.34` (LTS, security support through Feb 2027) | Chosen deliberately after checking metabase.com/version-support — not `latest`, for reproducibility |
 | Python deps | pandas 2.1.4, SQLAlchemy 1.4.51 (both pinned together: pandas ≥2.2 requires SQLAlchemy ≥2.0, which conflicts with Apache Airflow 2.9.3's SQLAlchemy <2.0 requirement) | |
 | CI | GitHub Actions | Lint, compose validation, `dbt parse`, and Airflow image build/import smoke tests on every push and pull request |
+  | Data quality | dbt tests + `dbt_utils` | Generic tests on key columns plus singular tests for match rate, row-count floor, region naming, and freshness. Tests run after `dbt_run`, so a failure raises an alert but does not roll back the update |
+
 ## Dashboards
 
 ![Dashboard overview](doc/01-overview-data-quality.png)
@@ -211,7 +213,7 @@ docker compose up -d --build
 
 - **v1.0.1 — Reproducibility fixes and CI.** Committed `dbt/profiles.yml` (previously git-ignored, which broke fresh clones), moved secrets to `.env`, bound published ports to localhost, removed the hardcoded database user from `init.sql`, and corrected the clone instructions. Added a GitHub Actions workflow that lints the Python code, validates `docker-compose.yml`, runs `dbt parse`, and builds the Airflow image with import smoke tests on every push and pull request.
 
-- **Unreleased (v1.0.2 in progress):** Discord failure alerts via `on_failure_callback`, `max_active_runs=1`, atomic replacement of reference tables (TRUNCATE and load in one transaction), and input validation for the NSPL download.
+- **v1.0.2 — Observability and data quality checks.** Discord failure alerts via `on_failure_callback`, `max_active_runs=1`, atomic replacement of reference tables (TRUNCATE and load in one transaction), and input validation for the NSPL download. Added dbt tests for failure modes met in this project: a floor on the geographic match rate, a gold row-count floor, a check that regions are names rather than raw ONS codes, a data freshness warning, a future-dated transaction warning, and accepted-value and range checks on key columns.
 
 - **v1.1 (planned):** Historical backfill from yearly Price Paid Data files, with enrichment scoped to postcodes not resolved by ONS.
 
@@ -219,7 +221,6 @@ docker compose up -d --build
 
 ### Planned next
 
-- **Automated data quality checks:** dbt tests for failure modes already encountered in this project: a floor on the geographic match rate, a data freshness warning, and `accepted_values` on `ppd_category_type`.
 - **Historical backfill (v1.1):** The pipeline currently loads only HM Land Registry's monthly update file (the current month's transactions plus amendments to earlier releases), so earlier periods are thinly populated and the trend and growth views rely on minimum-sample thresholds. The plan is a one-off backfill from the yearly Price Paid Data files (115–230 MB each, starting with the last five years) through the existing UPSERT path, run outside the monthly DAG in insert-only mode so it never overwrites rows the monthly run has updated. Prerequisites: (1) postcodes.io enrichment restricted to postcodes missing from ONS, since ONS already resolves 99.9% of transactions, and (2) an `is_incremental()` filter on `fct_property_prices` so each run no longer rescans the full history. Afterwards, the Data Maturity notes will be revisited, the CAGR view re-evaluated, and a year-over-year view can be reintroduced.
 - **Pipeline health tracking:** An `ops.pipeline_runs` audit table (rows loaded and duration per task) with a Pipeline Health tab in Metabase, and a row-count regression check that fails a run if a fact table shrinks unexpectedly.
 
@@ -228,6 +229,8 @@ docker compose up -d --build
 - **Voided transactions:** Rows with `record_status = 'D'` are filtered out in silver, but the incremental merge in `fct_property_prices` does not remove gold rows that were loaded earlier and later voided. A periodic `--full-refresh` or an explicit delete step would close this gap.
 - **Local authority names:** `admin_district` currently holds ONS local authority district codes for ONS-resolved postcodes. The code-to-name file is bundled in the same NSPL zip (`Documents/`), so it can be loaded and joined the same way `region_lookup` is.
 - **Manual NSPL release tracking:** ONS publishes no permanent download link, so `NSPL_SOURCE_URL` must be updated by hand when a new release appears (roughly quarterly).
+- **Tests detect, they do not gate:** dbt tests run after `fct_property_prices` has been built, so a failing test raises an alert but the new data is already visible in Metabase. True gating would test the silver layer before building gold.
+
 
 ### Out of current scope
 
