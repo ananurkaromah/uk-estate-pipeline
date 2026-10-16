@@ -61,8 +61,9 @@ with DAG(
         bash_command=f"cd {DBT_DIR} && dbt run --profiles-dir {DBT_DIR} --target-path /tmp/dbt_target --log-path /tmp/dbt_logs",
     )
 
-    # --- Data quality gate: pipeline stops here if tests fail, so a broken
-    # gold layer never reaches Metabase ---
+    # --- Data quality checks: run after dbt_run, so gold has already been
+    # updated when they execute. A failing test marks the run as failed and
+    # sends an alert, but it does not roll back or hide the new data. ---
     dbt_test = BashOperator(
         task_id="dbt_test",
         bash_command=f"cd {DBT_DIR} && dbt test --profiles-dir {DBT_DIR} --target-path /tmp/dbt_target --log-path /tmp/dbt_logs",
