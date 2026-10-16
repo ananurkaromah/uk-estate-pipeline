@@ -1,6 +1,6 @@
 -- Gold: one row per region for dashboard filters/joins
-select distinct
+SELECT DISTINCT
     region,
     admin_district
-from {{ ref('stg_postcode_master') }}
-where region is not null
+FROM {{ ref('stg_postcode_master') }}
+WHERE region IS NOT NULL
