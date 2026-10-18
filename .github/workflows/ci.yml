@@ -67,7 +67,15 @@ jobs:
         run: |
           docker run --rm --entrypoint dbt uk-estate-airflow:ci --version 2>&1 | grep -E "installed: 1\.8\."
 
-      - name: Ingestion modules and the DAG import cleanly
+      - name: Ingestion modules import cleanly
+        run: |
+          docker run --rm \
+            -e PYTHONPATH=/opt/airflow/ingestion \
+            -v "$PWD/ingestion:/opt/airflow/ingestion:ro" \
+            uk-estate-airflow:ci \
+            python -c "import db, alerts, land_registry, ons_postcode, postcodes, backfill_land_registry; print('ingestion ok')"
+
+      - name: The DAG file loads
         run: |
           docker run --rm \
             -e PYTHONPATH=/opt/airflow/ingestion \

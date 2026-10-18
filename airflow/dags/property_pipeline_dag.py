@@ -69,5 +69,5 @@ with DAG(
         bash_command=f"cd {DBT_DIR} && dbt test --profiles-dir {DBT_DIR} --target-path /tmp/dbt_target --log-path /tmp/dbt_logs",
     )
 
-    ingest_land_registry >> enrich_postcodes
-    [enrich_postcodes, ingest_ons_postcode] >> dbt_run >> dbt_test
+    [ingest_land_registry, ingest_ons_postcode] >> enrich_postcodes >> dbt_run >> dbt_test
+    
