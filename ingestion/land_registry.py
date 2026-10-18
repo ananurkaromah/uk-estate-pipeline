@@ -20,9 +20,9 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 SOURCE_URL = (
-    "http://prod.publicdata.landregistry.gov.uk.s3-website-eu-west-1.amazonaws.com"
-    "/pp-monthly-update-new-version.csv"
-)
+      "http://prod.publicdata.landregistry.gov.uk.s3-website-eu-west-1.amazonaws.com"
+      "/pp-monthly-update-new-version.csv"
+  )
 
 COLUMNS = [
     "transaction_id", "price", "date_of_transfer", "postcode", "property_type",

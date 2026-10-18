@@ -1,3 +1,7 @@
+-- Silver: cleaned, typed, deduplicated Land Registry transactions
+with source as (
+    select * from {{ source('bronze', 'land_registry_pp') }}
+),
 cleaned as (
     select
         transaction_id,
