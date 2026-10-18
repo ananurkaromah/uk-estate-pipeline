@@ -1,10 +1,10 @@
 {{
     config(
         materialized='incremental',
-        unique_key='transaction_id'
+        unique_key='transaction_id',
+        indexes=[{'columns': ['transaction_id'], 'unique': True}]
     )
 }}
-
 -- Gold: property transactions enriched with region, ready for Metabase.
 -- Incremental + unique_key='transaction_id' means dbt merges on
 -- transaction_id across runs -- new transactions get inserted, existing

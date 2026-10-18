@@ -74,4 +74,4 @@ jobs:
             -v "$PWD/ingestion:/opt/airflow/ingestion:ro" \
             -v "$PWD/airflow/dags:/opt/airflow/dags:ro" \
             uk-estate-airflow:ci \
-            python /opt/airflow/dags/property_pipeline_dag.py
+            python -c "import alerts, backfill_land_registry" && python /opt/airflow/dags/property_pipeline_dag.py

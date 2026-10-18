@@ -1,17 +1,16 @@
-"""Enrich distinct postcodes from bronze.land_registry_pp using postcodes.io
-(free bulk lookup, no key) into bronze.postcode_io.
+"""Look up postcodes.io for postcodes that the ONS NSPL does not know.
 
-Results are collected in memory first, then the table is replaced in one
-transaction, so a failure midway through the API calls leaves the previous
-table untouched.
+ONS is the primary geography source and postcodes.io is only a fallback, so only
+postcodes missing from bronze.ons_postcode (live or terminated) are looked up.
+Results are collected in memory, then the table is replaced in one transaction.
 """
 import logging
 
 import pandas as pd
 import requests
-from db import ensure_schema, get_engine
 from requests.adapters import HTTPAdapter, Retry
-from sqlalchemy import inspect
+
+from db import ensure_schema, get_engine
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -22,6 +21,26 @@ REQUEST_TIMEOUT = (10, 60)
 LOG_EVERY = 20
 SCHEMA = "bronze"
 TABLE_NAME = "postcode_io"
+MIN_ONS_ROWS = 1_000_000  # the full UK file has ~2.7M rows
+
+DDL = f"""
+    CREATE TABLE IF NOT EXISTS {SCHEMA}.{TABLE_NAME} (
+        postcode text,
+        latitude double precision,
+        longitude double precision,
+        region text,
+        admin_district text
+    )
+"""
+
+MISSING_FROM_ONS_SQL = """
+    SELECT DISTINCT upper(trim(l.postcode)) AS postcode
+    FROM bronze.land_registry_pp l
+    LEFT JOIN bronze.ons_postcode o
+           ON upper(trim(o.postcode)) = upper(trim(l.postcode))
+    WHERE l.postcode IS NOT NULL
+      AND o.postcode IS NULL
+"""
 
 
 def _build_session() -> requests.Session:
@@ -46,15 +65,19 @@ def _chunks(items, size):
 def run():
     engine = get_engine()
     ensure_schema(engine, SCHEMA)
-    inspector = inspect(engine)
 
-    postcodes = pd.read_sql(
-        "SELECT DISTINCT postcode FROM bronze.land_registry_pp WHERE postcode IS NOT NULL",
-        engine,
-    )["postcode"].tolist()
+    with engine.begin() as conn:
+        conn.exec_driver_sql(DDL)
+        ons_rows = conn.exec_driver_sql("SELECT count(*) FROM bronze.ons_postcode").scalar()
+    if ons_rows < MIN_ONS_ROWS:
+        raise ValueError(
+            f"bronze.ons_postcode has only {ons_rows} rows; it must be loaded before enrichment, "
+            "otherwise nearly every postcode would be looked up."
+        )
 
+    postcodes = pd.read_sql(MISSING_FROM_ONS_SQL, engine)["postcode"].tolist()
     total_batches = (len(postcodes) + BATCH_SIZE - 1) // BATCH_SIZE
-    logger.info("Looking up %d distinct postcodes across %d batches", len(postcodes), total_batches)
+    logger.info("%d postcodes are missing from ONS; looking them up in %d batches", len(postcodes), total_batches)
 
     session = _build_session()
     all_rows = []
@@ -75,20 +98,17 @@ def run():
                 })
 
         if batch_num % LOG_EVERY == 0 or batch_num == total_batches:
-            logger.info(
-                "Processed batch %d/%d (%d postcodes resolved so far)",
-                batch_num, total_batches, len(all_rows),
-            )
+            logger.info("Processed batch %d/%d (%d resolved so far)", batch_num, total_batches, len(all_rows))
 
     if postcodes and not all_rows:
-        raise ValueError("postcodes.io returned no results; keeping the existing table.")
+        logger.warning("None of the %d looked-up postcodes were resolved by postcodes.io", len(postcodes))
 
     with engine.begin() as conn:
-        if inspector.has_table(TABLE_NAME, schema=SCHEMA):
-            conn.exec_driver_sql(f"TRUNCATE TABLE {SCHEMA}.{TABLE_NAME}")
-        pd.DataFrame(all_rows).to_sql(
-            TABLE_NAME, conn, schema=SCHEMA, if_exists="append", index=False, chunksize=10_000
-        )
+        conn.exec_driver_sql(f"TRUNCATE TABLE {SCHEMA}.{TABLE_NAME}")
+        if all_rows:
+            pd.DataFrame(all_rows).to_sql(
+                TABLE_NAME, conn, schema=SCHEMA, if_exists="append", index=False, chunksize=10_000
+            )
 
     logger.info("Finished: resolved %d/%d postcodes into %s.%s", len(all_rows), len(postcodes), SCHEMA, TABLE_NAME)
 
