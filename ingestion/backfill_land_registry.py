@@ -5,8 +5,12 @@ Usage (inside the Airflow container):
 
 Insert-only: rows whose transaction_id already exists in bronze.land_registry_pp
 are left untouched, so the monthly UPSERT stays the source of truth for amendments.
-Yearly files have no record_status column (it exists in the monthly file only), so
-backfilled rows are marked 'A'. Safe to re-run: existing rows are skipped.
+
+Column layout: the yearly files may have 15 columns (no record_status) or 16 columns
+(with record_status as the last column, e.g. the current-year file). Both are handled:
+  - 16 columns: record_status is taken from the file; rows marked 'D' (deleted) are skipped.
+  - 15 columns: backfilled rows are marked 'A'.
+Safe to re-run: existing rows are skipped.
 """
 import argparse
 import io
@@ -25,20 +29,26 @@ logger = logging.getLogger(__name__)
 
 BASE_URL = "https://price-paid-data.publicdata.landregistry.gov.uk"
 
-# 15 columns: the monthly file's 16th column, record_status, is monthly-only.
+# Base 15 columns, present in every file.
 COLUMNS = [
     "transaction_id", "price", "date_of_transfer", "postcode", "property_type",
     "old_new", "duration", "paon", "saon", "street", "locality", "town_city",
     "district", "county", "ppd_category_type",
 ]
+# Some files carry record_status as a 16th column.
+COLUMNS_WITH_STATUS = COLUMNS + ["record_status"]
 CHUNK_SIZE = 100_000
 
 
 def insert_chunk(engine, chunk: pd.DataFrame) -> int:
-    """COPY a chunk into a temp table, then INSERT ... ON CONFLICT DO NOTHING."""
+    """COPY a chunk into a temp table, then INSERT ... ON CONFLICT DO NOTHING.
+
+    `chunk` must have all 16 columns (COLUMNS_WITH_STATUS).
+    """
     buf = io.StringIO()
     chunk.to_csv(buf, header=False, index=False)
     buf.seek(0)
+    stage_cols = ", ".join(COLUMNS_WITH_STATUS)
     cols = ", ".join(COLUMNS)
 
     raw = engine.raw_connection()
@@ -48,10 +58,14 @@ def insert_chunk(engine, chunk: pd.DataFrame) -> int:
                 f"CREATE TEMP TABLE land_registry_stage "
                 f"(LIKE {SCHEMA}.{TABLE_NAME} INCLUDING DEFAULTS) ON COMMIT DROP"
             )
-            cur.copy_expert(f"COPY land_registry_stage ({cols}) FROM STDIN WITH (FORMAT csv)", buf)
+            cur.copy_expert(
+                f"COPY land_registry_stage ({stage_cols}) FROM STDIN WITH (FORMAT csv)", buf
+            )
             cur.execute(
                 f"INSERT INTO {SCHEMA}.{TABLE_NAME} ({cols}, record_status) "
-                f"SELECT {cols}, 'A' FROM land_registry_stage "
+                f"SELECT {cols}, COALESCE(NULLIF(record_status, ''), 'A') "
+                "FROM land_registry_stage "
+                "WHERE COALESCE(record_status, '') <> 'D' "
                 "ON CONFLICT (transaction_id) DO NOTHING"
             )
             inserted = cur.rowcount
@@ -62,6 +76,21 @@ def insert_chunk(engine, chunk: pd.DataFrame) -> int:
         raise
     finally:
         raw.close()
+
+
+def normalize_chunk(chunk: pd.DataFrame, url: str) -> pd.DataFrame:
+    """Return a chunk with exactly the 16 expected columns."""
+    ncols = chunk.shape[1]
+    if ncols == len(COLUMNS_WITH_STATUS):
+        chunk.columns = COLUMNS_WITH_STATUS
+    elif ncols == len(COLUMNS):
+        chunk.columns = COLUMNS
+        chunk["record_status"] = "A"
+    else:
+        raise ValueError(
+            f"{url}: expected {len(COLUMNS)} or {len(COLUMNS_WITH_STATUS)} columns, found {ncols}"
+        )
+    return chunk
 
 
 def backfill_file(engine, name: str) -> None:
@@ -80,15 +109,13 @@ def backfill_file(engine, name: str) -> None:
             for chunk in pd.read_csv(
                 tmp.name, header=None, dtype=str, keep_default_na=False, chunksize=CHUNK_SIZE
             ):
-                if chunk.shape[1] != len(COLUMNS):
-                    raise ValueError(f"{url}: expected {len(COLUMNS)} columns, found {chunk.shape[1]}")
-                chunk.columns = COLUMNS
+                chunk = normalize_chunk(chunk, url)
                 inserted_total += insert_chunk(engine, chunk)
                 read_total += len(chunk)
                 logger.info("%s: %d rows read, %d inserted so far", name, read_total, inserted_total)
 
     logger.info(
-        "%s finished in %.0fs: %d rows read, %d new, %d already present",
+        "%s finished in %.0fs: %d rows read, %d new, %d already present or skipped",
         name, time.monotonic() - started, read_total, inserted_total, read_total - inserted_total,
     )
 
