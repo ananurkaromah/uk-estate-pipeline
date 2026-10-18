@@ -17,7 +17,6 @@ import time
 
 import pandas as pd
 import requests
-
 from db import ensure_schema, get_engine
 from land_registry import SCHEMA, TABLE_NAME, ensure_table
 

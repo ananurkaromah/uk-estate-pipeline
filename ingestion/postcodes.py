@@ -8,9 +8,8 @@ import logging
 
 import pandas as pd
 import requests
-from requests.adapters import HTTPAdapter, Retry
-
 from db import ensure_schema, get_engine
+from requests.adapters import HTTPAdapter, Retry
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
