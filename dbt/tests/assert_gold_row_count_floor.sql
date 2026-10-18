@@ -3,4 +3,4 @@
 -- means something went badly wrong. Raise the floor as the data grows.
 SELECT COUNT(*) AS row_count
 FROM {{ ref('fct_property_prices') }}
-HAVING COUNT(*) < 50000
+HAVING COUNT(*) < 4100000

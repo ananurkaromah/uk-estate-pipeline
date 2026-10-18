@@ -52,7 +52,7 @@ This pipeline is designed to answer real property-market questions, not just mov
 | paon / saon | text | Primary/secondary addressable object name (house number/unit) |
 | street, locality, town_city, district, county | text | Address components |
 | ppd_category_type | char(1) | A=Standard entry, B=Additional entry (portfolio/bulk/non-market transactions — often extreme outlier prices) |
-| record_status | char(1) | A=Addition, C=Change, D=Delete |
+| record_status | char(1) | A=Addition, C=Change, D=Delete. All rows loaded by the historical backfill are marked A, since the backfill is a snapshot and carries no change history. |
 
 **`bronze.postcode_io`** — one row per postcode, from postcodes.io
 
@@ -139,10 +139,11 @@ uk-estate-pipeline/
 ├── doc/
 │   ├── 01-overview-data-quality.png
 │   ├── 02-monthly-price-trend.png
-│   ├── 03-top-10-districts-cagr.png
-│   ├── 04-median-price-by-property-type.png
-│   ├── 05-transaction-volume.png
-│   ├── 06-property-type-mix.png
+│   ├── 03-yoy-price-growth
+│   ├── 04-top-10-districts-cagr.png
+│   ├── 05-median-price-by-property-type.png
+│   ├── 06-transaction-volume.png
+│   ├── 07-property-type-mix.png
 │   └── architecture.png
 ├── docker/
 │   └── init.sql                     # schemas + grants only -- no table DDL (bronze tables are created dynamically by ingestion scripts)
@@ -215,18 +216,17 @@ docker compose up -d --build
 
 - **v1.0.2 — Observability and data quality checks.** Discord failure alerts via `on_failure_callback`, `max_active_runs=1`, atomic replacement of reference tables (TRUNCATE and load in one transaction), and input validation for the NSPL download. Added dbt tests for failure modes met in this project: a floor on the geographic match rate, a gold row-count floor, a check that regions are names rather than raw ONS codes, a data freshness warning, a future-dated transaction warning, and accepted-value and range checks on key columns.
 
-- **v1.1 (planned):** Historical backfill from yearly Price Paid Data files, with enrichment scoped to postcodes not resolved by ONS.
+- **v1.1 — Historical backfill (2021–2025).** Added a one-off, insert-only backfill from HM Land Registry's yearly Price Paid Data files (`ingestion/backfill_land_registry.py`: COPY into a staging table, then `INSERT ... ON CONFLICT DO NOTHING`). Postcode enrichment now queries postcodes.io only for postcodes missing from ONS; terminated postcodes are kept in silver because Price Paid Data records the postcode used at the time of sale; `fct_property_prices` has a unique index on `transaction_id`. Data quality thresholds were re-baselined for the larger table.
 
 ## Future Work & Scalability
 
 ### Planned next
 
-- **Historical backfill (v1.1):** The pipeline currently loads only HM Land Registry's monthly update file (the current month's transactions plus amendments to earlier releases), so earlier periods are thinly populated and the trend and growth views rely on minimum-sample thresholds. The plan is a one-off backfill from the yearly Price Paid Data files (115–230 MB each, starting with the last five years) through the existing UPSERT path, run outside the monthly DAG in insert-only mode so it never overwrites rows the monthly run has updated. Prerequisites: (1) postcodes.io enrichment restricted to postcodes missing from ONS, since ONS already resolves 99.9% of transactions, and (2) an `is_incremental()` filter on `fct_property_prices` so each run no longer rescans the full history. Afterwards, the Data Maturity notes will be revisited, the CAGR view re-evaluated, and a year-over-year view can be reintroduced.
 - **Pipeline health tracking:** An `ops.pipeline_runs` audit table (rows loaded and duration per task) with a Pipeline Health tab in Metabase, and a row-count regression check that fails a run if a fact table shrinks unexpectedly.
 
 ### Known limitations
 
-- **Voided transactions:** Rows with `record_status = 'D'` are filtered out in silver, but the incremental merge in `fct_property_prices` does not remove gold rows that were loaded earlier and later voided. A periodic `--full-refresh` or an explicit delete step would close this gap.
+- **Voided transactions:** Rows with `record_status = 'D'` are filtered out in silver, but the incremental merge in `fct_property_prices` does not remove gold rows that were loaded earlier and later voided. Mitigated by the quarterly full refresh; backfilled rows are all marked A, so their voids arrive later as D rows in monthly files and are covered the same way.
 - **Local authority names:** `admin_district` currently holds ONS local authority district codes for ONS-resolved postcodes. The code-to-name file is bundled in the same NSPL zip (`Documents/`), so it can be loaded and joined the same way `region_lookup` is.
 - **Manual NSPL release tracking:** ONS publishes no permanent download link, so `NSPL_SOURCE_URL` must be updated by hand when a new release appears (roughly quarterly).
 - **Tests detect, they do not gate:** dbt tests run after `fct_property_prices` has been built, so a failing test raises an alert but the new data is already visible in Metabase. True gating would test the silver layer before building gold.
@@ -237,6 +237,13 @@ docker compose up -d --build
 - **AVM / property valuation:** Would require a genuinely new data source with floor-area data (e.g. EPC, Energy Performance Certificates, also free/open) plus address-level matching to Land Registry, since Price Paid Data alone has no size data to compute price per square metre.
 - **Cloud portability:** The medallion design (bronze/silver/gold schemas, dbt models referencing `source()`/`ref()`) would migrate with minimal change to a managed warehouse if this ever needed to scale past a single on-premise instance.
 - **Heavier monitoring stack:** Prometheus and Grafana would only be warranted with multiple DAGs or shared infrastructure.
+
+## Operations
+
+- **Monthly:** the DAG runs automatically on the 1st; failures post to Discord after retries. If no message and no new data appears for a month, check that the containers are running (`docker compose ps`).
+- **Quarterly, when ONS publishes a new NSPL release:** update `NSPL_SOURCE_URL` in `.env`, run `docker compose up -d`, then `dbt run --full-refresh --select fct_property_prices`. The full refresh re-enriches every transaction with the new geography and removes transactions that were voided after being loaded.
+- **February 2027:** Metabase v0.58 security support ends; upgrade to the next LTS release.
+- **After large reloads:** refresh the snapshot figures and screenshots in `dashboard.md`.
 
 ## Data Attributions & Licences
 

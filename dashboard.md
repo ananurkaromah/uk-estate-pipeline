@@ -2,11 +2,11 @@
 Built on HM Land Registry Price Paid Data, geographically enriched with ONS and postcodes.io reference data, transformed with dbt (Bronze → Silver → Gold), and orchestrated by Airflow. All figures are sourced exclusively from `gold.fct_property_prices`. Price views use standard (Category A) transactions only, with likely data-entry outliers (over £10M) excluded.
 
 ## Executive Summary & Key Findings
-*(Static snapshot as of 2026-10-08. The dashboard itself refreshes as the pipeline loads new months; the figures below do not. Geographic scope is England and Wales, the jurisdiction of HM Land Registry.)*
+*(Static snapshot as of 2026-10-18. The dashboard itself refreshes as the pipeline loads new months; the figures below do not. Geographic scope is England and Wales, the jurisdiction of HM Land Registry.)*
 
-- **Data scale and quality:** The Gold layer holds **89,133 transactions** (dated up to August 2026) with a **99.9% geographic match rate**. The national median sale price for standard (Category A), non-outlier transactions stands at **£300,000**. Extreme entries (>£10M) are flagged as potential data-entry errors or bulk sales, preserved for audit traceability, and isolated from price charts.
-- **Regional price differences:** **London** has the highest prices in the dataset (detached median approaching £1M) and a flat-heavy housing mix (about 52% of its standard transactions). **The South East** and **North West** have the most transactions among the loaded records; these are raw counts, not adjusted for housing stock or population, so they say little about relative market strength.
-- **Growth districts:** Ranked by compound annual growth rate (CAGR) in average price, **PR3** (Preston area) leads at over **11% per year** between 2024 and 2026 (9 transactions in 2024 vs. 55 in 2026; noting 2026 data runs through August). Given the short two-year window and modest initial sample size, this ranking is sensitive to individual property mix shifts. It measures historical appreciation within the loaded data window, not a market forecast.
+- **Data scale and quality:** The Gold layer holds **5,177,801 transactions** (dated up to August 2026) with a **100% geographic match rate**. The national median sale price for standard (Category A), non-outlier transactions stands at **£287,500**. Extreme entries (>£10M) are flagged as potential data-entry errors or bulk sales, preserved for audit traceability, and isolated from price charts.
+- **Regional price differences:** **London** has the highest prices in the dataset (detached median around £900K) and a flat-heavy housing mix (about 53% of its standard transactions). **The South East** and **North West** have the most standard transactions over the last 12 months; these are raw counts, not adjusted for housing stock or population, so they say little about relative market strength.
+- **Growth districts:** Ranked by compound annual growth rate (CAGR) in average price, **WC2R** (Central London) leads at about **15% per year**, followed by **GL19** and **W1U** at roughly 14.5%. The calculation uses full calendar years only (up to 2025), within the 2021–2025 backfilled data. Three of the top ten are central London districts (WC2R, W1U, W1J), where a small number of high-value sales can move the average sharply, so the ranking is sensitive to individual property mix shifts. It measures historical appreciation within the loaded data window, not a market forecast.
 
 ## Configuration & Scope
 
@@ -16,7 +16,7 @@ Built on HM Land Registry Price Paid Data, geographically enriched with ONS and 
   2. Market Trends and Hotspots
   3. Market Segmentation
 * **Formatting:** Price metrics are explicitly formatted as British Pounds (GBP, Currency style).
-* **Source Scope & Data Maturity:** The pipeline ingests HM Land Registry's monthly update files (containing current-month transactions and retrospective amendments) rather than the entire historical archive (1995–present). Consequently, metrics reflect the accumulated data loaded by the pipeline to date, and earlier periods feature thinner volumes until a historical backfill is executed.
+* **Source Scope & Data Maturity:** The pipeline ingests HM Land Registry's monthly update files (containing current-month transactions and retrospective amendments) together with a historical backfill covering 2021–2025. Transactions before 2021 (the archive runs 1995–present) are not loaded, so metrics reflect the data accumulated from 2021 onwards. The two most recent months are excluded from trend charts because registrations lag sales by up to two months.
 
 | Convention | Applied to |
 |---|---|
@@ -25,7 +25,7 @@ Built on HM Land Registry Price Paid Data, geographically enriched with ONS and 
 | Rows without a resolved region excluded | Sections 2 and 3 |
 | Minimum sample size | Monthly trend: 30 per region-month. CAGR: 5 per district-year. Price by type: 10 per group |
 
-## 1.	Overview and Data Quality 
+## 1. Overview and Data Quality 
 ![Overview and Data Quality](doc/01-overview-data-quality.png)
 
 ### 1.1. Total Transactions
@@ -67,8 +67,8 @@ SELECT COUNT(*) FILTER (WHERE is_price_outlier) AS flagged_outliers
 FROM gold.fct_property_prices;
 ```
 
-## 2.	Market Trends & Hotspots
-### 2.1.	Monthly Average Property Price Trends by Region
+## 2. Market Trends & Hotspots
+### 2.1. Monthly Average Property Price Trends by Region
 Monthly average price by region for standard (Category A), non-outlier transactions. Only region-months with at least 30 transactions are shown, so the line may start later than the underlying data.
 
 ![Monthly Average Property Price Trends by Region](doc/02-monthly-price-trend.png)
@@ -84,6 +84,8 @@ WITH monthly AS (
     WHERE ppd_category_type = 'A'
       AND is_price_outlier = FALSE
       AND region IS NOT NULL
+      -- drop the most recent 2 months: still incomplete / subject to late registrations
+      AND transaction_month <= DATE_TRUNC('month', (SELECT MAX(transaction_date) FROM gold.fct_property_prices)) - INTERVAL '2 months'
     GROUP BY transaction_month, region
 )
 SELECT transaction_month, region, average_price, txn_count
@@ -93,10 +95,47 @@ ORDER BY transaction_month, region
 ```
 **Visualization**: Line chart (x: transaction_month, series: region, y: average_price)
 
-### 2.2.	Top 10 Districts by Annual Price Growth (CAGR)
+### 2.2. Year-over-year (yoy) Price Growth
+Year-over-year change in average sale price by region, for full calendar years only. Each point compares a region's average price with the previous year (yoy_pct_change, %). The current, incomplete year is excluded so it doesn't distort the trend. Included: standard market sales only (PPD category A), price outliers removed, and region-years with at least 30 transactions. A year is shown only if the region also has data for the year before.
+
+![Year-over-year (yoy) Price Growth](doc/03-yoy-price-growth.png)
+
+```sql
+WITH yearly AS (
+    SELECT
+        region,
+        DATE_TRUNC('year', transaction_month) AS yr,
+        AVG(price) AS avg_price,
+        COUNT(*) AS txn_count
+    FROM gold.fct_property_prices
+    WHERE ppd_category_type = 'A'
+      AND is_price_outlier = FALSE
+      AND region IS NOT NULL
+      AND transaction_month < DATE_TRUNC('year', (SELECT MAX(transaction_date) FROM gold.fct_property_prices))
+    GROUP BY region, DATE_TRUNC('year', transaction_month)
+    HAVING COUNT(*) >= 30
+),
+with_prev AS (
+    SELECT
+        region, yr, avg_price, txn_count,
+        LAG(yr) OVER (PARTITION BY region ORDER BY yr) AS prev_yr,
+        LAG(avg_price) OVER (PARTITION BY region ORDER BY yr) AS prev_avg_price
+    FROM yearly
+)
+SELECT
+    region, yr, avg_price, txn_count,
+    ROUND(((avg_price - prev_avg_price) / prev_avg_price) * 100, 1) AS yoy_pct_change
+FROM with_prev
+WHERE prev_yr = yr - INTERVAL '1 year'
+ORDER BY region, yr
+```
+**Visualization**: Bar chart (x: yr, series: region, y: yoy_pct_change)
+
+
+### 2.3. Top 10 Districts by Annual Price Growth (CAGR)
 Postcode districts ranked by compound annual growth rate (CAGR) in average price between their first and last year with at least 5 standard (Category A, non-outlier) transactions, requiring at least two years between them so growth is comparable across districts. This reflects historical appreciation, not a forecast.
 
-![Top 10 Districts by Annual Price Growth (CAGR)](doc/03-top-10-districts-cagr.png)
+![Top 10 Districts by Annual Price Growth (CAGR)](doc/04-top-10-districts-cagr.png)
 
 ```sql
 WITH district_year AS (
@@ -110,6 +149,7 @@ WITH district_year AS (
     WHERE ppd_category_type = 'A'
       AND is_price_outlier = FALSE
       AND region IS NOT NULL
+      AND transaction_month < DATE_TRUNC('year', (SELECT MAX(transaction_date) FROM gold.fct_property_prices))
     GROUP BY 1, 2, 3
     HAVING COUNT(*) >= 5  -- minimum sales per district-year to be meaningful
 ),
@@ -143,7 +183,7 @@ LIMIT 10
 ### 3.1 Median Price by Property Type per Region
 Median transaction price by property type within each region (Category A, non-outlier), shown only for groups with at least 10 transactions (N ≥ 10). 
 
-![Median Price by Property Type per Region](doc/04-median-price-by-property-type.png)
+![Median Price by Property Type per Region](doc/05-median-price-by-property-type.png)
 
 ```sql
 SELECT
@@ -172,7 +212,7 @@ ORDER BY region, 2
 ### 3.2	Transaction Volume by Region (last 12 months)
 Number of standard (Category A, non-outlier) transactions per region over the most recent 12 months of data. This measures activity within the loaded records, not total market volume or liquidity: counts also scale with region size and are not adjusted for housing stock.
 
-![Transaction Volume by Region (last 12 months)](doc/05-transaction-volume.png)
+![Transaction Volume by Region (last 12 months)](doc/06-transaction-volume.png)
 
 ```sql
 SELECT
@@ -192,7 +232,7 @@ ORDER BY txn_count DESC
 ### 3.3	Property Type Mix per Region (%)
 Share of standard transactions by property type within each region, showing structural differences such as flat-heavy versus detached-heavy markets.
 
-![Property Type Mix per Region (%)](doc/06-property-type-mix.png)
+![Property Type Mix per Region (%)](doc/07-property-type-mix.png)
 
 ```sql
 WITH counts AS (
