@@ -31,8 +31,8 @@ This pipeline is designed to answer real property-market questions, not just mov
 
 | # | Business question | Dashboard section |
 |---|---|---|
-| 1 | How have property prices moved month over month, by region? | 2.1 Monthly price trends |
-| 2 | Which postcode districts have shown the strongest historical price appreciation? | 2.2 Top 10 districts by CAGR |
+| 1 | How have property prices moved month over month, year over year by region? | 2.1 Monthly price trends and 2.2 YoY property price growth|
+| 2 | Which postcode districts have shown the strongest historical price appreciation? | 2.3 Top 10 districts by CAGR |
 | 3 | How do prices, transaction activity, and housing mix differ across regions? | 3.1 to 3.3 Market Segmentation |
 | 4 | Can the data be trusted? (freshness, geographic match rate, flagged outliers) | 1. Overview and Data Quality |
 
@@ -89,7 +89,7 @@ This pipeline is designed to answer real property-market questions, not just mov
 
 ## Pipeline Architecture
 
-![architecture](doc/architecture.png)
+![architecture](doc/uk-property-pipeline-architecture.png)
 
 - **Sources**: HM Land Registry Price Paid Data (CSV), postcodes.io (REST API/JSON), ONS Postcode Directory/NSPL (CSV in zip)
 - **Orchestration**: Apache Airflow schedules and coordinates ingestion and transformation tasks. Task failures, after retries are exhausted, post to a Discord webhook. `max_active_runs=1` prevents overlapping runs.
@@ -144,7 +144,7 @@ uk-estate-pipeline/
 │   ├── 05-median-price-by-property-type.png
 │   ├── 06-transaction-volume.png
 │   ├── 07-property-type-mix.png
-│   └── architecture.png
+│   └── uk-property-pipeline-architecture.png
 ├── docker/
 │   └── init.sql                     # schemas + grants only -- no table DDL (bronze tables are created dynamically by ingestion scripts)
 ├── airflow/
@@ -207,15 +207,11 @@ docker compose up -d --build
 ## Version History
 
 - **v0.1 — Baseline medallion pipeline.** Bronze layer used truncate-and-reload per ingestion run for all three sources; gold layer (`fct_property_prices`) used full-refresh (`table`) dbt materialization.
-
 - **v1.0 — Incremental load with deduplication.** Converted Land Registry ingestion (`land_registry.py`) from truncate-and-reload to UPSERT, keyed on `transaction_id`. Converted `fct_property_prices` to an `incremental` dbt materialization with `unique_key='transaction_id'`.
   **Why:** production-style monitoring across two consecutive monthly runs revealed that the gold table's row count had *decreased* (101,334 → 90,612) instead of accumulating — because HM Land Registry’s monthly update file is not a cumulative history, truncate-and-reload was silently discarding historical transactions every run. This broke the time-series assumption behind the monthly trend and growth views. `postcode_io` and `ons_postcode` (reference/dimension data, not transactional) retain truncate-and-reload, since they don't need historical accumulation.
   **Verification:** after the migration, two consecutive DAG runs left the gold row count unchanged (no decrease), a duplicate `transaction_id` check returned no rows, and all dbt tests passed.
-
 - **v1.0.1 — Reproducibility fixes and CI.** Committed `dbt/profiles.yml` (previously git-ignored, which broke fresh clones), moved secrets to `.env`, bound published ports to localhost, removed the hardcoded database user from `init.sql`, and corrected the clone instructions. Added a GitHub Actions workflow that lints the Python code, validates `docker-compose.yml`, runs `dbt parse`, and builds the Airflow image with import smoke tests on every push and pull request.
-
 - **v1.0.2 — Observability and data quality checks.** Discord failure alerts via `on_failure_callback`, `max_active_runs=1`, atomic replacement of reference tables (TRUNCATE and load in one transaction), and input validation for the NSPL download. Added dbt tests for failure modes met in this project: a floor on the geographic match rate, a gold row-count floor, a check that regions are names rather than raw ONS codes, a data freshness warning, a future-dated transaction warning, and accepted-value and range checks on key columns.
-
 - **v1.1 — Historical backfill (2021–2025).** Added a one-off, insert-only backfill from HM Land Registry's yearly Price Paid Data files (`ingestion/backfill_land_registry.py`: COPY into a staging table, then `INSERT ... ON CONFLICT DO NOTHING`). Postcode enrichment now queries postcodes.io only for postcodes missing from ONS; terminated postcodes are kept in silver because Price Paid Data records the postcode used at the time of sale; `fct_property_prices` has a unique index on `transaction_id`. Data quality thresholds were re-baselined for the larger table.
 
 ## Future Work & Scalability
