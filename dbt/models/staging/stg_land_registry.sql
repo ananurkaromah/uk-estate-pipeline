@@ -1,4 +1,8 @@
--- Silver: cleaned, typed, deduplicated Land Registry transactions
+-- Silver: cleaned and typed Land Registry transactions.
+-- Dropped here (kept in bronze for audit):
+--   * record_status = 'D' (transactions deleted at source)
+--   * rows with no postcode (cannot be mapped to a region)
+--   * rows with no price
 with source as (
     select * from {{ source('bronze', 'land_registry_pp') }}
 ),
@@ -18,7 +22,7 @@ cleaned as (
         ppd_category_type
     from source
     where price is not null
-      and postcode is not null
+      and nullif(trim(postcode), '') is not null
       and coalesce(record_status, 'A') != 'D'
 )
 

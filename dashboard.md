@@ -1,12 +1,14 @@
 # UK Property Market Intelligence Dashboard
 Built on HM Land Registry Price Paid Data, geographically enriched with ONS and postcodes.io reference data, transformed with dbt (Bronze → Silver → Gold), and orchestrated by Airflow. All figures are sourced exclusively from `gold.fct_property_prices`. Price views use standard (Category A) transactions only, with likely data-entry outliers (over £10M) excluded.
 
-## Executive Summary & Key Findings
-*(Static snapshot as of 2026-10-18. The dashboard itself refreshes as the pipeline loads new months; the figures below do not. Geographic scope is England and Wales, the jurisdiction of HM Land Registry.)*
+> The Metabase dashboards are live. Screenshots in this repo are dated snapshots, kept so you can see how the data changes month to month.
 
-- **Data scale and quality:** The Gold layer holds **5,177,801 transactions** (dated up to August 2026) with a **100% geographic match rate**. The national median sale price for standard (Category A), non-outlier transactions stands at **£287,500**. Extreme entries (>£10M) are flagged as potential data-entry errors or bulk sales, preserved for audit traceability, and isolated from price charts.
-- **Regional price differences:** **London** has the highest prices in the dataset (detached median around £900K) and a flat-heavy housing mix (about 53% of its standard transactions). **The South East** and **North West** have the most standard transactions over the last 12 months; these are raw counts, not adjusted for housing stock or population, so they say little about relative market strength.
-- **Growth districts:** Ranked by compound annual growth rate (CAGR) in average price, **WC2R** (Central London) leads at about **15% per year**, followed by **GL19** and **W1U** at roughly 14.5%. The calculation uses full calendar years only (up to 2025), within the 2021–2025 backfilled data. Three of the top ten are central London districts (WC2R, W1U, W1J), where a small number of high-value sales can move the average sharply, so the ranking is sensitive to individual property mix shifts. It measures historical appreciation within the loaded data window, not a market forecast.
+## Snapshot history
+
+| Snapshot | Data through | Gold transactions | Median price (Cat A, non-outlier) | Geo match | Notes |
+|---|---|---|---|---|---|
+| [2026-11-04](doc/snapshots/2026-11-04/findings.md) | 2026-09-30 | <fill> | <fill> | <fill> | After stale-row fix; first monthly UPSERT after the backfill |
+| [2026-10-18](doc/snapshots/2026-10-18/findings.md) | 2026-08-28 | 5,177,801 | £287,500 | 100% | After 2021-2025 backfill; before stale-row fix |
 
 ## Configuration & Scope
 
