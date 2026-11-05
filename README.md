@@ -52,7 +52,7 @@ This pipeline is designed to answer real property-market questions, not just mov
 | paon / saon | text | Primary/secondary addressable object name (house number/unit) |
 | street, locality, town_city, district, county | text | Address components |
 | ppd_category_type | char(1) | A=Standard entry, B=Additional entry (portfolio/bulk/non-market transactions — often extreme outlier prices) |
-| record_status | char(1) | A=Addition, C=Change, D=Delete. All rows loaded by the historical backfill are marked A, since the backfill is a snapshot and carries no change history. |
+| record_status | char(1) | A=Addition, C=Change, D=Delete. Rows loaded by the 2021-2025 historical backfill are marked A, because the yearly files had no change history when it was loaded. Current yearly files carry record_status as a 16th column, which the backfill script now reads. |
 
 **`bronze.postcode_io`** — one row per postcode, from postcodes.io
 
@@ -111,15 +111,17 @@ This pipeline is designed to answer real property-market questions, not just mov
 | Orchestration | Apache Airflow 2.9.3 (Docker, LocalExecutor) | DAG-based dependency management |
 | Containerization | Docker Compose, custom Airflow image (`Dockerfile.airflow`) | `PYTHONPATH` set at the container level so ingestion modules import cleanly, no `sys.path` hacks in DAG code |
 | Storage / warehouse | PostgreSQL 16 | Schema-based medallion separation (bronze/silver/gold) |
-| Transformation | dbt-core 1.8.2 + dbt-postgres 1.8.2 | `fct_property_prices` uses incremental materialization with `unique_key='transaction_id'` (v1.0+) |
+| Transformation | dbt-core 1.8.2 + dbt-postgres 1.8.2 | `fct_property_prices` uses incremental materialization with `unique_key='transaction_id'` (v1.0+), plus a post-hook that deletes gold rows no longer present in silver (v1.1.1) |
 | BI / serving | Metabase, pinned to `v0.58.34` (LTS, security support through Feb 2027) | Chosen deliberately after checking metabase.com/version-support — not `latest`, for reproducibility |
 | Python deps | pandas 2.1.4, SQLAlchemy 1.4.51 (both pinned together: pandas ≥2.2 requires SQLAlchemy ≥2.0, which conflicts with Apache Airflow 2.9.3's SQLAlchemy <2.0 requirement) | |
 | CI | GitHub Actions | Lint, compose validation, `dbt parse`, and Airflow image build/import smoke tests on every push and pull request |
-  | Data quality | dbt tests + `dbt_utils` | Generic tests on key columns plus singular tests for match rate, row-count floor, region naming, and freshness. Tests run after `dbt_run`, so a failure raises an alert but does not roll back the update |
+| Data quality | dbt tests + `dbt_utils` | Generic tests on key columns plus singular tests for match rate, row-count floor, region naming, and freshness. Tests run after `dbt_run`, so a failure raises an alert but does not roll back the update |
 
 ## Dashboards
 
 ![Dashboard overview](doc/snapshots/2026-11-04/01-overview-data-quality.png)
+
+*Latest snapshot: 2026-11-04. Earlier snapshots are kept under `doc/snapshots/` so month-to-month changes are visible.*
 
 For complete information regarding metrics, queries, and visualizations, see the [Dashboard Documentation](dashboard.md).
 
@@ -130,6 +132,9 @@ For complete information regarding metrics, queries, and visualizations, see the
 uk-estate-pipeline/
 ├── .env.example
 ├── .gitignore
+├── .github/
+│   └── workflows/
+│       └── ci.yml
 ├── Dockerfile.airflow
 ├── README.md
 ├── dashboard.md
@@ -143,15 +148,17 @@ uk-estate-pipeline/
 │       ├── 2026-10-18  # after the 2021–2025 historical backfill (v1.1), before the stale-row fix (v1.1.1)
 │       └── 2026-11-04  # first monthly update after the 2021-2025 historical backfill, with the stale-row fix applied
 ├── docker/
-│   └── init.sql  # schemas + grants only -- no table DDL (bronze tables are created dynamically by ingestion scripts)
+│   └── init.sql  # schemas only -- no table DDL (bronze tables are created dynamically by ingestion scripts)
 ├── airflow/
 │   └── dags/
 │       └── property_pipeline_dag.py
 ├── ingestion/
-│   ├── db.py               # shared Postgres connection helper
-│   ├── land_registry.py    # -> bronze.land_registry_pp
-│   ├── postcodes.py        # -> bronze.postcode_io
-│   └── ons_postcode.py     # -> bronze.ons_postcode + bronze.region_lookup
+│   ├── db.py                        # shared Postgres connection helper
+│   ├── alerts.py                    # Discord failure notification
+│   ├── land_registry.py             # monthly update file -> bronze.land_registry_pp (UPSERT)
+│   ├── backfill_land_registry.py    # one-off yearly backfill -> bronze.land_registry_pp (insert-only)
+│   ├── postcodes.py                 # -> bronze.postcode_io
+│   └── ons_postcode.py              # -> bronze.ons_postcode + bronze.region_lookup
 └── dbt/
     ├── dbt_project.yml
     ├── profiles.yml
@@ -159,6 +166,12 @@ uk-estate-pipeline/
     ├── package-lock.yml
     ├── macros/
     │   └── get_custom_schema.sql    # forces models into silver/gold, not bronze_silver/bronze_gold
+    ├── tests/                       # singular data quality tests
+    │   ├── assert_geo_match_rate.sql
+    │   ├── assert_gold_row_count_floor.sql
+    │   ├── assert_regions_are_names.sql
+    │   ├── assert_data_is_fresh.sql
+    │   └── assert_no_future_dates.sql
     └── models/
         ├── staging/                 # silver
         │   ├── sources.yml
@@ -189,7 +202,7 @@ Fill in `.env`:
   `python3 -c "import secrets; print(secrets.token_hex(16))"`
 - `AIRFLOW_UID` — set to your host user's UID: `echo "AIRFLOW_UID=$(id -u)" >> .env`
 - `NSPL_SOURCE_URL` — current NSPL download link from the [ONS Open Geography Portal](https://geoportal.statistics.gov.uk) (this link changes between releases and points to a `.zip`, not a raw CSV)
-- `ALERT_WEBHOOK_URL` — (optional, Discord webhook for task failure alerts )
+- `ALERT_WEBHOOK_URL` — (optional, Discord webhook for task failure alerts)
 
 Build and start everything:
 
@@ -201,6 +214,19 @@ docker compose up -d --build
 - **Metabase**: http://localhost:3000 — on first run, complete the setup wizard and connect it to the `postgres` service using the credentials from `.env`; build dashboards against the `gold` schema only. Metabase's setup only needs to be done once — its data persists in a named volume across restarts
 - Trigger the `uk_property_pipeline` DAG from the Airflow UI to run the full ingestion → transform flow. `dbt deps` runs once automatically during `airflow-init`, not as part of every DAG run
 
+### Historical backfill (optional, one-time)
+
+The monthly update file only contains the current month plus amendments, so a fresh clone holds recent data only. To reproduce the 2021–2025 dashboards, run the DAG once first (it loads the ONS reference data), then load the yearly Price Paid Data files:
+
+```bash
+docker compose exec airflow-scheduler python /opt/airflow/ingestion/backfill_land_registry.py 2021 2022 2023-part1 2023-part2 2024 2025
+docker compose exec airflow-scheduler python -c "import postcodes; postcodes.run()"
+docker compose exec airflow-scheduler bash -c "cd /opt/airflow/dbt && dbt run --full-refresh --profiles-dir . --target-path /tmp/dbt_target --log-path /tmp/dbt_logs"
+docker compose exec airflow-scheduler bash -c "cd /opt/airflow/dbt && dbt test --profiles-dir . --target-path /tmp/dbt_target --log-path /tmp/dbt_logs"
+```
+
+The 2023 yearly file is split into two parts, so it is passed as `2023-part1 2023-part2`. The backfill is insert-only (`ON CONFLICT DO NOTHING`), so it never overwrites amendments already loaded by the monthly job and is safe to re-run.
+
 ## Version History
 
 - **v0.1 — Baseline medallion pipeline.** Bronze layer used truncate-and-reload per ingestion run for all three sources; gold layer (`fct_property_prices`) used full-refresh (`table`) dbt materialization.
@@ -210,18 +236,20 @@ docker compose up -d --build
 - **v1.0.1 — Reproducibility fixes and CI.** Committed `dbt/profiles.yml` (previously git-ignored, which broke fresh clones), moved secrets to `.env`, bound published ports to localhost, removed the hardcoded database user from `init.sql`, and corrected the clone instructions. Added a GitHub Actions workflow that lints the Python code, validates `docker-compose.yml`, runs `dbt parse`, and builds the Airflow image with import smoke tests on every push and pull request.
 - **v1.0.2 — Observability and data quality checks.** Discord failure alerts via `on_failure_callback`, `max_active_runs=1`, atomic replacement of reference tables (TRUNCATE and load in one transaction), and input validation for the NSPL download. Added dbt tests for failure modes met in this project: a floor on the geographic match rate, a gold row-count floor, a check that regions are names rather than raw ONS codes, a data freshness warning, a future-dated transaction warning, and accepted-value and range checks on key columns.
 - **v1.1 — Historical backfill (2021–2025).** Added a one-off, insert-only backfill from HM Land Registry's yearly Price Paid Data files (`ingestion/backfill_land_registry.py`: COPY into a staging table, then `INSERT ... ON CONFLICT DO NOTHING`). Postcode enrichment now queries postcodes.io only for postcodes missing from ONS; terminated postcodes are kept in silver because Price Paid Data records the postcode used at the time of sale; `fct_property_prices` has a unique index on `transaction_id`. Data quality thresholds were re-baselined for the larger table.
-- **v1.1.1 Pipeline health tracking.** Fixes a data-consistency issue found on the first monthly run after the backfill: 965 transactions cancelled at source were still counted in gold, because the incremental model only inserts and updates. Gold now removes any row that no longer exists in silver, so gold always equals silver (5,271,935 transactions). The row-count test floor was re-baselined for the larger dataset, rows without a postcode are now documented as an intentional exclusion (about 0.3%), and dated dashboard snapshots were added so month-to-month changes are visible.
+- **v1.1.1 — Gold consistency fix and dated snapshots.** Fixes a data-consistency issue found on the first monthly run after the backfill: 965 transactions (960 cancelled and 5 changed at source) were still counted in gold, because the incremental model only inserts and updates. A post-hook now removes any gold row that no longer exists in silver, so gold always equals silver (5,271,935 transactions). Silver also drops rows with an empty postcode, which are now documented as an intentional exclusion (14,566 rows, about 0.3%). The row-count test floor was re-baselined for the larger dataset, dashboard queries use explicit 2021–2025 windows with larger minimum sample sizes, and dated dashboard snapshots were added under `doc/snapshots/` so month-to-month changes are visible.
+- **v1.1.2 — Backfill script fix.** The backfill script failed on current Land Registry yearly files because they now carry a 16th column (record_status). It now accepts both the 15- and 16-column layouts, takes record_status from the file when present, and skips deleted rows.
 
-## Scalability
+## Known Limitations & Future Work
 
 ### Known limitations
 
-- **Voided transactions:** Rows with `record_status = 'D'` are filtered out in silver, but the incremental merge in `fct_property_prices` does cancelled transactions are removed from gold automatically by a post-hook after each run gold rows that were loaded earlier and later voided. Mitigated by the quarterly full refresh; backfilled rows are all marked A, so their voids arrive later as D rows in monthly files and are covered the same way.
+- **Historical coverage is 2021–2025 only.** The backfill loads full calendar years 2021–2025. Data for 2026 comes from the monthly update files since the pipeline started running, so 2026 is incomplete and is excluded from year-based comparisons. Year-over-year growth is available for 2022–2025 only, because 2020 is not loaded.
+- **Cancellations are applied monthly.** Rows with `record_status = 'D'` are filtered out in silver, and a post-hook on `fct_property_prices` deletes any gold row that is no longer in silver after each run. A cancellation therefore reaches gold with the next monthly run, not the moment it is published. Backfilled rows are all marked A, so their cancellations arrive later as D rows in monthly files and are handled the same way.
+- **Rows without a postcode are excluded.** 14,566 rows (about 0.3% of the raw data) have no postcode and are dropped in silver. They stay in bronze for audit, but they slightly understate national totals and counts.
+- **Not a price index.** Year-over-year and CAGR figures are changes in average sale price. They are not adjusted for changes in property mix, so a few high-value sales or a shift towards flats can move them.
 - **Local authority names:** `admin_district` currently holds ONS local authority district codes for ONS-resolved postcodes. The code-to-name file is bundled in the same NSPL zip (`Documents/`), so it can be loaded and joined the same way `region_lookup` is.
 - **Manual NSPL release tracking:** ONS publishes no permanent download link, so `NSPL_SOURCE_URL` must be updated by hand when a new release appears (roughly quarterly).
 - **Tests detect, they do not gate:** dbt tests run after `fct_property_prices` has been built, so a failing test raises an alert but the new data is already visible in Metabase. True gating would test the silver layer before building gold.
-- **First monthly run after the backfill** state that rows without a postcode are dropped in silver (14,566 of about 5.29M, around 0.3%), kept in bronze for audit, and that this slightly understates national totals.
-
 
 ### Out of current scope
 
@@ -231,10 +259,15 @@ docker compose up -d --build
 
 ## Operations
 
-- **Monthly:** the DAG runs automatically on the 1st; failures post to Discord after retries. If no message and no new data appears for a month, check that the containers are running (`docker compose ps`).
-- **Quarterly, when ONS publishes a new NSPL release:** update `NSPL_SOURCE_URL` in `.env`, run `docker compose up -d`, then `dbt run --full-refresh --select fct_property_prices`. The full refresh re-enriches every transaction with the new geography and removes transactions that were voided after being loaded.
+- **Monthly:** the DAG runs automatically on the 1st while the stack is running; failures post to Discord after retries. If the machine was off on the 1st, the missed run starts when the scheduler comes back up. If no message and no new data appears for a month, check that the containers are running (`docker compose ps`).
+- **After each monthly run succeeds:** check that `dbt_test` is green, then add a dated snapshot under `doc/snapshots/` (screenshots and `findings.md`), refresh the latest screenshots in `doc/`, and add a row to the snapshot history in `dashboard.md`. This is a documentation-only change and needs no release tag.
+- **Quarterly, when ONS publishes a new NSPL release:** update `NSPL_SOURCE_URL` in `.env`, run `docker compose up -d`, then re-enrich every transaction with the new geography:
+
+  ```bash
+  docker compose exec airflow-scheduler bash -c "cd /opt/airflow/dbt && dbt run --full-refresh --select fct_property_prices --profiles-dir . --target-path /tmp/dbt_target --log-path /tmp/dbt_logs"
+  ```
+
 - **February 2027:** Metabase v0.58 security support ends; upgrade to the next LTS release.
-- **After large reloads:** refresh the snapshot figures and screenshots in `dashboard.md`.
 
 ## Data Attributions & Licences
 
@@ -267,4 +300,4 @@ Built with Apache Airflow, dbt, PostgreSQL, and Metabase, all open-source projec
 
 ## License
 
-The code in this repository is released under the [MIT License](LICENSE). The data it processes is published by its owners under their own terms (see Acknowledgements).
+The code in this repository is released under the [MIT License](LICENSE). The data it processes is published by its owners under their own terms (see Data Attributions & Licences above).
