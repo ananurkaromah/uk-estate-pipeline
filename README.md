@@ -225,7 +225,7 @@ docker compose exec airflow-scheduler bash -c "cd /opt/airflow/dbt && dbt run --
 docker compose exec airflow-scheduler bash -c "cd /opt/airflow/dbt && dbt test --profiles-dir . --target-path /tmp/dbt_target --log-path /tmp/dbt_logs"
 ```
 
-The 2023 yearly file is split into two parts, so it is passed as `2023-part1 2023-part2`. The backfill is insert-only (`ON CONFLICT DO NOTHING`), so it never overwrites amendments already loaded by the monthly job and is safe to re-run.
+Land Registry publishes 2023 both as a single file and as two parts (`2023-part1`, `2023-part2`); load only one of the two forms. The backfill is insert-only (`ON CONFLICT DO NOTHING`), so it never overwrites amendments already loaded by the monthly job and is safe to re-run.
 
 ## Version History
 
