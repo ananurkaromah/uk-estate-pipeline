@@ -25,15 +25,15 @@ Headline KPIs: total transactions, latest transaction date, national median pric
 
 ![Overview and data quality](01-overview-data-quality.png)
 
-### 2. Monthly price trend
+### 2. Monthly Average Property Price Trends
 
-Median price per month. Months with fewer than 30 transactions are hidden so that thin months do not create false spikes. The most recent months are incomplete because registrations can lag by up to two months.
+Average price per month. Months with fewer than 30 transactions are hidden so that thin months do not create false spikes. The most recent months are incomplete because registrations can lag by up to two months.
 
 ![Monthly price trend](02-monthly-price-trend.png)
 
 ### 3. Year-over-year price growth
 
-Year-over-year change in price. The current, partial year is excluded, and years are never bridged across gaps, so a missing year cannot produce a misleading growth figure.
+Year-over-year change in average sale price. The current, partial year is excluded, and years are never bridged across gaps, so a missing year cannot produce a misleading growth figure.
 
 ![Year-over-year price growth](03-yoy-price-growth.png)
 
@@ -55,8 +55,24 @@ Standard transactions over the last 12 months by region. These are raw counts, n
 
 ![Transaction volume](06-transaction-volume.png)
 
+### 7. Property type mix
+
+Share of standard (Category A, non-outlier) transactions by property type within each region.
+
+![Property type mix](07-property-type-mix.png)
+
+## Changes since the previous snapshot (2026-10-08)
+
+- Data: the 2021–2025 historical backfill was loaded, so total transactions rose from 89,133 to 5,177,801. The latest transaction date is unchanged at 2026-08-28.
+- The median sale price moved from £300,000 to £287,500 and the geographic match rate from 99.9% to 100%. These changes reflect much broader coverage, not market movement.
+- Charts: the year-over-year chart, which was not working in the previous snapshot, was rebuilt, and the trend, CAGR and segmentation charts now cover 2021 onward.
+
 ## Notes
 
-- **Taken before the stale-row fix.** Transactions cancelled at source were not yet removed from Gold, so the figures may include a small number of cancelled sales. On 2026-11-04 this affected 965 rows (about 0.02% of Gold); the effect on the medians and rankings above is expected to be negligible. From v1.1.1 onward Gold is kept equal to Silver automatically.
+- **Stale rows were discovered after this snapshot.** On 2026-11-04, 965 rows (960 cancelled and 5 changed at source) were found in Gold that no longer existed in Silver, because the incremental model only inserts and updates rows. This snapshot reflects the data as loaded at the time; the effect on the medians and rankings is expected to be negligible (about 0.02% of Gold). From v1.1.1 onward Gold is kept equal to Silver automatically.
 - **Rows without a postcode** (about 0.3% of the raw data) are excluded from Silver and therefore from every figure above.
 - **Recent months are incomplete.** Land Registry registrations can lag by up to two months, so the latest months will change in later snapshots.
+- **The year-over-year chart** in this snapshot also shows 2021, which is compared against a very thin 2020 sample. The query was corrected in the 2026-11-04 snapshot: it now covers full calendar years 2022-2025 only, with a minimum of 1,000 transactions per region-year.
+- **The transaction volume chart** used a rolling 12-month window, which likely included months of 2026 with incomplete coverage, so absolute counts are probably understated. The 2026-11-04 snapshot uses calendar year 2025 instead.
+- **The CAGR query** in this snapshot had no explicit lower bound on the start year, so the statement that it uses data within 2021-2025 was not verified for every district.
+- **Chart queries** were tightened in the 2026-11-04 snapshot (explicit 2021-2025 window; year-over-year requires 1,000 transactions per region-year; CAGR requires 30 transactions per district-year instead of 5). Differences from this snapshot may come from the method, not only from new data.
