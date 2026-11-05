@@ -119,7 +119,7 @@ This pipeline is designed to answer real property-market questions, not just mov
 
 ## Dashboards
 
-![Dashboard overview](doc/01-overview-data-quality.png)
+![Dashboard overview](doc/snapshots/2026-11-04/01-overview-data-quality.png)
 
 For complete information regarding metrics, queries, and visualizations, see the [Dashboard Documentation](dashboard.md).
 
@@ -137,24 +137,21 @@ uk-estate-pipeline/
 ├── docker-compose.yml
 ├── LICENSE
 ├── doc/
-│   ├── 01-overview-data-quality.png
-│   ├── 02-monthly-price-trend.png
-│   ├── 03-yoy-price-growth
-│   ├── 04-top-10-districts-cagr.png
-│   ├── 05-median-price-by-property-type.png
-│   ├── 06-transaction-volume.png
-│   ├── 07-property-type-mix.png
-│   └── uk-property-pipeline-architecture.png
+│   ├── uk-property-pipeline-architecture.png
+│   └── snapshots
+│       ├── 2026-10-08  # pre-backfill
+│       ├── 2026-10-18  # after the 2021–2025 historical backfill (v1.1), before the stale-row fix (v1.1.1)
+│       └── 2026-11-04  # first monthly update after the 2021-2025 historical backfill, with the stale-row fix applied
 ├── docker/
-│   └── init.sql                     # schemas + grants only -- no table DDL (bronze tables are created dynamically by ingestion scripts)
+│   └── init.sql  # schemas + grants only -- no table DDL (bronze tables are created dynamically by ingestion scripts)
 ├── airflow/
 │   └── dags/
 │       └── property_pipeline_dag.py
 ├── ingestion/
-│   ├── db.py                        # shared Postgres connection helper
-│   ├── land_registry.py             # -> bronze.land_registry_pp
-│   ├── postcodes.py                 # -> bronze.postcode_io
-│   └── ons_postcode.py              # -> bronze.ons_postcode + bronze.region_lookup
+│   ├── db.py               # shared Postgres connection helper
+│   ├── land_registry.py    # -> bronze.land_registry_pp
+│   ├── postcodes.py        # -> bronze.postcode_io
+│   └── ons_postcode.py     # -> bronze.ons_postcode + bronze.region_lookup
 └── dbt/
     ├── dbt_project.yml
     ├── profiles.yml
@@ -213,19 +210,17 @@ docker compose up -d --build
 - **v1.0.1 — Reproducibility fixes and CI.** Committed `dbt/profiles.yml` (previously git-ignored, which broke fresh clones), moved secrets to `.env`, bound published ports to localhost, removed the hardcoded database user from `init.sql`, and corrected the clone instructions. Added a GitHub Actions workflow that lints the Python code, validates `docker-compose.yml`, runs `dbt parse`, and builds the Airflow image with import smoke tests on every push and pull request.
 - **v1.0.2 — Observability and data quality checks.** Discord failure alerts via `on_failure_callback`, `max_active_runs=1`, atomic replacement of reference tables (TRUNCATE and load in one transaction), and input validation for the NSPL download. Added dbt tests for failure modes met in this project: a floor on the geographic match rate, a gold row-count floor, a check that regions are names rather than raw ONS codes, a data freshness warning, a future-dated transaction warning, and accepted-value and range checks on key columns.
 - **v1.1 — Historical backfill (2021–2025).** Added a one-off, insert-only backfill from HM Land Registry's yearly Price Paid Data files (`ingestion/backfill_land_registry.py`: COPY into a staging table, then `INSERT ... ON CONFLICT DO NOTHING`). Postcode enrichment now queries postcodes.io only for postcodes missing from ONS; terminated postcodes are kept in silver because Price Paid Data records the postcode used at the time of sale; `fct_property_prices` has a unique index on `transaction_id`. Data quality thresholds were re-baselined for the larger table.
+- **v1.1.1 Pipeline health tracking.** Fixes a data-consistency issue found on the first monthly run after the backfill: 965 transactions cancelled at source were still counted in gold, because the incremental model only inserts and updates. Gold now removes any row that no longer exists in silver, so gold always equals silver (5,271,935 transactions). The row-count test floor was re-baselined for the larger dataset, rows without a postcode are now documented as an intentional exclusion (about 0.3%), and dated dashboard snapshots were added so month-to-month changes are visible.
 
-## Future Work & Scalability
-
-### Planned next
-
-- **Pipeline health tracking:** An `ops.pipeline_runs` audit table (rows loaded and duration per task) with a Pipeline Health tab in Metabase, and a row-count regression check that fails a run if a fact table shrinks unexpectedly.
+## Scalability
 
 ### Known limitations
 
-- **Voided transactions:** Rows with `record_status = 'D'` are filtered out in silver, but the incremental merge in `fct_property_prices` does not remove gold rows that were loaded earlier and later voided. Mitigated by the quarterly full refresh; backfilled rows are all marked A, so their voids arrive later as D rows in monthly files and are covered the same way.
+- **Voided transactions:** Rows with `record_status = 'D'` are filtered out in silver, but the incremental merge in `fct_property_prices` does cancelled transactions are removed from gold automatically by a post-hook after each run gold rows that were loaded earlier and later voided. Mitigated by the quarterly full refresh; backfilled rows are all marked A, so their voids arrive later as D rows in monthly files and are covered the same way.
 - **Local authority names:** `admin_district` currently holds ONS local authority district codes for ONS-resolved postcodes. The code-to-name file is bundled in the same NSPL zip (`Documents/`), so it can be loaded and joined the same way `region_lookup` is.
 - **Manual NSPL release tracking:** ONS publishes no permanent download link, so `NSPL_SOURCE_URL` must be updated by hand when a new release appears (roughly quarterly).
 - **Tests detect, they do not gate:** dbt tests run after `fct_property_prices` has been built, so a failing test raises an alert but the new data is already visible in Metabase. True gating would test the silver layer before building gold.
+- **First monthly run after the backfill** state that rows without a postcode are dropped in silver (14,566 of about 5.29M, around 0.3%), kept in bronze for audit, and that this slightly understates national totals.
 
 
 ### Out of current scope

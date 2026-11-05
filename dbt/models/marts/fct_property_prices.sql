@@ -1,14 +1,19 @@
-{{
-    config(
-        materialized='incremental',
-        unique_key='transaction_id',
-        indexes=[{'columns': ['transaction_id'], 'unique': True}]
-    )
-}}
+{{ config(
+    materialized='incremental',
+    unique_key='transaction_id',
+    post_hook="delete from {{ this }} as g where not exists (select 1 from {{ ref('stg_land_registry') }} s where s.transaction_id = g.transaction_id)"
+) }}
+
 -- Gold: property transactions enriched with region, ready for Metabase.
 -- Incremental + unique_key='transaction_id' means dbt merges on
 -- transaction_id across runs -- new transactions get inserted, existing
 -- ones get updated in place -- instead of a full table rebuild every run.
+-- an incremental model only inserts and updates. When a transaction is later cancelled (D), 
+-- silver drops it but gold keeps the old row. The hook deletes gold rows that no longer exist in silver, 
+-- so gold always equals silver.
+-- Risk: if silver were ever empty because of an upstream failure, 
+-- the hook would empty gold. In that situation dbt_run fails first, so the hook does not run.
+
 SELECT
     lr.transaction_id,
     lr.price,
