@@ -89,7 +89,7 @@ This pipeline is designed to answer real property-market questions, not just mov
 
 ## Pipeline Architecture
 
-![architecture](doc/uk-property-pipeline-architecture.png)
+![architecture](doc/uk-property-pipeline-architecture-v1.1.2.png)
 
 - **Sources**: HM Land Registry Price Paid Data (CSV), postcodes.io (REST API/JSON), ONS Postcode Directory/NSPL (CSV in zip)
 - **Orchestration**: Apache Airflow schedules and coordinates ingestion and transformation tasks. Task failures, after retries are exhausted, post to a Discord webhook. `max_active_runs=1` prevents overlapping runs.
