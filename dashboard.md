@@ -39,7 +39,7 @@ Full findings and screenshots for this snapshot: [2026-11-04](doc/snapshots/2026
 | Analysis window | 2021-2025 for sections 2 and 3 (volume chart: 2025). Overview cards (section 1) cover all loaded data, including partial 2026 |
 
 ## 1. Overview and Data Quality
-![Overview and Data Quality](doc/01-overview-data-quality.png)
+![Overview and Data Quality](doc/snapshots/2026-11-04/01-overview-data-quality.png)
 
 ### 1.1. Total Transactions
 Number of transactions currently loaded in the gold layer.
@@ -84,7 +84,7 @@ FROM gold.fct_property_prices;
 ### 2.1. Monthly Average Property Price Trends by Region
 Monthly average sale price by region (Category A, outliers excluded). The two most recent months are omitted because of late registrations, and region-months with fewer than 30 transactions are hidden. Data covers 2021-2025 only (2026 is incomplete).
 
-![Monthly Average Property Price Trends by Region](doc/02-monthly-price-trend.png)
+![Monthly Average Property Price Trends by Region](doc/snapshots/2026-11-04/02-monthly-price-trend.png)
 
 ```sql
 WITH monthly AS (
@@ -113,7 +113,7 @@ ORDER BY transaction_month, region
 ### 2.2. Year-over-year (yoy) Price Growth
 Year-over-year change in average sale price by region (Category A, outliers excluded). A value is shown only when both the year and the immediately preceding year have at least 1,000 transactions for that region. Covers full calendar years 2022-2025; this is not a mix-adjusted price index.
 
-![Year-over-year (yoy) Price Growth](doc/03-yoy-price-growth.png)
+![Year-over-year (yoy) Price Growth](doc/snapshots/2026-11-04/03-yoy-price-growth.png)
 
 ```sql
 WITH yearly AS (
@@ -150,7 +150,7 @@ ORDER BY region, yr
 ### 2.3. Top 10 Districts by Annual Price Growth (CAGR)
 Postcode districts ranked by compound annual growth rate (CAGR) in average sale price between their first and last year with at least 30 standard (Category A, non-outlier) transactions, at least two years apart. Covers full calendar years 2021-2025. Historical appreciation, not a forecast; a few high-value sales can move averages sharply in small districts.
 
-![Top 10 Districts by Annual Price Growth (CAGR)](doc/04-top-10-districts-cagr.png)
+![Top 10 Districts by Annual Price Growth (CAGR)](doc/snapshots/2026-11-04/04-top-10-districts-cagr.png)
 
 ```sql
 WITH district_year AS (
@@ -199,7 +199,7 @@ LIMIT 10
 ### 3.1 Median Price by Property Type per Region
 Median sale price by property type within each region (Category A, non-outlier), pooled across 2021-2025 and shown only for groups with at least 10 transactions (N ≥ 10). Because years are pooled, values are not current price levels.
 
-![Median Price by Property Type per Region](doc/05-median-price-by-property-type.png)
+![Median Price by Property Type per Region](doc/snapshots/2026-11-04/05-median-price-by-property-type.png)
 
 ```sql
 SELECT
@@ -229,7 +229,7 @@ ORDER BY region, 2
 ### 3.2 Transaction Volume by Region (2025)
 Number of standard (Category A, non-outlier) transactions per region in calendar year 2025. This measures activity within the loaded records, not total market volume or liquidity: counts scale with region size and are not adjusted for housing stock.
 
-![Transaction Volume by Region (2025)](doc/06-transaction-volume.png)
+![Transaction Volume by Region (2025)](doc/snapshots/2026-11-04/06-transaction-volume.png)
 
 ```sql
 SELECT
@@ -249,7 +249,7 @@ ORDER BY txn_count DESC
 ### 3.3 Property Type Mix per Region (%)
 Share of standard (Category A, non-outlier) transactions by property type within each region, 2021-2025, showing structural differences such as flat-heavy versus detached-heavy markets.
 
-![Property Type Mix per Region (%)](doc/07-property-type-mix.png)
+![Property Type Mix per Region (%)](doc/snapshots/2026-11-04/07-property-type-mix.png)
 
 ```sql
 WITH counts AS (
