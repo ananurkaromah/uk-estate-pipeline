@@ -214,6 +214,8 @@ docker compose up -d --build
 - **Metabase**: http://localhost:3000 — on first run, complete the setup wizard and connect it to the `postgres` service using the credentials from `.env`; build dashboards against the `gold` schema only. Metabase's setup only needs to be done once — its data persists in a named volume across restarts
 - Trigger the `uk_property_pipeline` DAG from the Airflow UI to run the full ingestion → transform flow. `dbt deps` runs once automatically during `airflow-init`, not as part of every DAG run
 
+> **Expected on a fresh clone: one test fails on the first run.** The first DAG run only loads the current monthly update file, so `gold.fct_property_prices` holds far fewer rows than the `assert_gold_row_count_floor` test requires (the floor is sized for the full 2021–2025 history, about 5.27M rows). The `dbt_test` task therefore errors (it shows as yellow "up for retry" in the Airflow UI and is marked failed once its retries are exhausted), and a Discord alert is sent if `ALERT_WEBHOOK_URL` is set. This is not a pipeline error: the data is loaded and the other tests still run, and the task turns green as soon as the table meets the floor. The failure clears once you run the historical backfill below.
+
 ### Historical backfill (optional, one-time)
 
 The monthly update file only contains the current month plus amendments, so a fresh clone holds recent data only. To reproduce the 2021–2025 dashboards, run the DAG once first (it loads the ONS reference data), then load the yearly Price Paid Data files:
@@ -225,7 +227,9 @@ docker compose exec airflow-scheduler bash -c "cd /opt/airflow/dbt && dbt run --
 docker compose exec airflow-scheduler bash -c "cd /opt/airflow/dbt && dbt test --profiles-dir . --target-path /tmp/dbt_target --log-path /tmp/dbt_logs"
 ```
 
-Land Registry publishes 2023 both as a single file and as two parts (`2023-part1`, `2023-part2`); load only one of the two forms. The backfill is insert-only (`ON CONFLICT DO NOTHING`), so it never overwrites amendments already loaded by the monthly job and is safe to re-run.
+Land Registry publishes 2023 both as a single file and as two parts (`2023-part1`, `2023-part2`); load only one of the two forms. The backfill is insert-only (`ON CONFLICT DO NOTHING`), so it never overwrites amendments already loaded by the monthly job and is safe to re-run. After the backfill and the full refresh, `dbt test` should pass, including `assert_gold_row_count_floor`.
+
+If you skip the backfill, the `assert_gold_row_count_floor` failure is expected and can be ignored, or you can temporarily lower the floor in `dbt/tests/assert_gold_row_count_floor.sql`. Do not commit a lowered floor: it exists to catch data loss in a full-history deployment.
 
 ## Version History
 
